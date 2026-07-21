@@ -1,4 +1,4 @@
-# Nousomplex Attendance Portal
+# Nous Complex Attendance Portal
 
 A standalone attendance portal designed to be hosted on **GitHub Pages** and connected to **Supabase** for secure user accounts and data storage. It does not require custom Odoo code.
 
@@ -66,7 +66,7 @@ where email = 'YOUR-EMAIL@example.com';
 Using a separate subdomain is the cleanest experience.
 
 1. In GitHub **Settings** → **Pages**, enter `attendance.nousomplex.com` as the custom domain.
-2. In the DNS provider that manages `nousomplex.com`, add a `CNAME` record:
+2. In the DNS provider that manages `nouscomplex.com`, add a `CNAME` record:
 
 ```text
 Host/Name: attendance
@@ -74,22 +74,22 @@ Target: YOUR-GITHUB-USERNAME.github.io
 ```
 
 3. Wait for GitHub Pages to verify DNS, then enable **Enforce HTTPS**.
-4. In Supabase **Authentication** → **URL Configuration**, set the Site URL to `https://attendance.nousomplex.com` and add it to Redirect URLs.
+4. In Supabase **Authentication** → **URL Configuration**, set the Site URL to `https://attendance.nouscomplex.com` and add it to Redirect URLs.
 
 ## Add it to your Odoo SaaS website
 
 The best option is an Odoo website button:
 
-1. On `www.nousomplex.com`, open Website → Edit.
+1. On `www.nouscomplex.com`, open Website → Edit.
 2. Add a Button block with the label **Attendance Portal**.
-3. Set its link to `https://attendance.nousomplex.com` (or your GitHub Pages address).
+3. Set its link to `https://attendance.nouscomplex.com` (or your GitHub Pages address).
 4. Save and publish.
 
 You can also use Odoo Website’s **Embed Code** block and add:
 
 ```html
-<iframe src="https://attendance.nousomplex.com"
-  title="Nousomplex Attendance Portal"
+<iframe src="https://attendance.nouscomplex.com"
+  title="Nous Complex Attendance Portal"
   style="width:100%; min-height:900px; border:0; border-radius:12px;">
 </iframe>
 ```
