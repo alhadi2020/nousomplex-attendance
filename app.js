@@ -46,9 +46,9 @@
 
   async function navigate(page) {
     state.page = page; document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
-    $("#page-title").textContent = ({ dashboard:"Dashboard", attendance:"Mark attendance", students:"Students", classes:"Classes", teachers:"Teachers", reports:"Reports & exports" })[page];
+    $("#page-title").textContent = ({ dashboard:"Dashboard", attendance:"Mark attendance", students:"Students", classes:"Classes", teachers:"Teachers", reports:"Reports & Exports" })[page];
     $("#today").textContent = fmt.format(new Date()); $(".sidebar")?.classList.remove("open");
-    try { await ({ dashboard, attendance, students, classes, teachers, reports })[page](); } catch (e) { content.innerHTML = empty(e.message); flash(e.message, true); }
+    try { await ({ dashboard, attendance, students, classes, teachers, reports & exports})[page](); } catch (e) { content.innerHTML = empty(e.message); flash(e.message, true); }
   }
 
   async function dashboard() {
