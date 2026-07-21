@@ -1,4 +1,4 @@
-/* Nousomplex Attendance Portal — browser-only client. Data access is protected by Supabase RLS. */
+/* Nous Complex Attendance Portal — browser-only client. Data access is protected by Supabase RLS. */
 (() => {
   const cfg = window.APP_CONFIG || {};
   const configured = cfg.SUPABASE_URL?.startsWith("https://") && !cfg.SUPABASE_ANON_KEY?.startsWith("PASTE_");
