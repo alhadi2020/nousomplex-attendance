@@ -110,7 +110,7 @@
 
   async function reports() {
     setTemplate("#reports-template"); await getClasses(); const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1); $("#report-from").value = start.toISOString().slice(0, 10); $("#report-to").value = isoToday(); $("#report-class").innerHTML = classOptions("", "All available classes");
-    $("#report-class").onchange = async () => { const classId = $("#report-class").value; const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("name")); $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(s.roll_number)})</option>`).join(""); };
+    $("#report-class").onchange = async () => { const classId = $("#report-class").value; const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("name")); $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(s.roll_number)})</option>`).join("")}`; };
     $("#run-report").onclick = runReport; $("#excel-export").onclick = exportExcel; $("#pdf-export").onclick = () => window.print(); await runReport();
   }
   async function runReport() {
