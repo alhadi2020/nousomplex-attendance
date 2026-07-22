@@ -86,7 +86,10 @@
       state.user = session.user;
       state.profile = await api(state.db.from("profiles").select("*").eq("id", state.user.id).single());
       state.teacher = await api(state.db.from("teachers").select("*").eq("profile_id", state.user.id).maybeSingle());
-      $("#user-name").textContent = state.profile.full_name || state.profile.email;
+      
+      // Get the display name from profile (full_name) or fallback to email
+      const displayName = state.profile.full_name || state.profile.email;
+      $("#user-name").textContent = displayName;
       $("#user-role").textContent = state.profile.role;
       $("#auth-screen").classList.add("hidden"); 
       $("#app").classList.remove("hidden");
