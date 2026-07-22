@@ -70,11 +70,11 @@
   }
   async function loadRoster() {
     const classId = $("#attendance-class").value, date = $("#attendance-date").value; if (!classId || !date) return flash("Choose a class and date.", true);
-  const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
+    const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
     const session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
     const map = Object.fromEntries(existing.map(r => [r.student_id, r]));
- $("#roster").innerHTML = students.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${students.map(s => { const r = map[s.id] || { status:"present", remarks:"" }; return `<tr data-student="${s.id}"><td>${esc(s.roll_number)}</td><td>${esc(s.name)}</td><td><select class="status-select"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select></td><td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250"></td></tr>`; }).join("")}</tbody></table></div>` : empty("No active students exist in this class.");
+    $("#roster").innerHTML = students.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${students.map(s => { const r = map[s.id] || { status:"present", remarks:"" }; return `<tr data-student="${s.id}"><td>${esc(s.roll_number)}</td><td>${esc(s.name)}</td><td><select class="status-select"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select></td><td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250"></td></tr>`; }).join("")}</tbody></table></div>` : empty("No active students exist in this class.");
     $("#save-attendance").disabled = !students.length;
   }
   async function saveAttendance() {
@@ -87,7 +87,7 @@
     } catch (e) { flash(e.message, true); }
   }
  
- async function students() {
+  async function students() {
     setTemplate("#students-template"); await getClasses(); const admin = isAdmin();
     let rows = await api(state.db.from("students").select("id,name,roll_number,email,phone,class_id,active,classes(name,section)").order("roll_number"));
     if (!admin) rows = rows.filter(s => s.active);
@@ -150,22 +150,23 @@
  
   async function teachers() {
     if (!isAdmin()) return navigate("dashboard"); setTemplate("#teachers-template");
-const [profiles, registered] = await Promise.all([api(state.db.from("profiles").select("id,full_name,email").eq("role", "teacher").order("email")), api(state.db.from("teachers").select("id,profile_id,name,phone,can_export,profiles(email)").order("name"))]);
+    const [profiles, registered] = await Promise.all([api(state.db.from("profiles").select("id,full_name,email").eq("role", "teacher").order("email")), api(state.db.from("teachers").select("id,profile_id,name,phone,can_export,profiles(email)").order("name"))]);
     const used = new Set(registered.map(t => t.profile_id)); const available = profiles.filter(p => !used.has(p.id));
     showTeacherActivateForm(available);
-   $("#teachers-table").innerHTML = registered.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Report downloads</th><th>Actions</th></tr></thead><tbody>${registered.map(t => `<tr data-id="${t.id}"><td>${esc(t.name)}</td><td>${esc(t.profiles?.email)}</td><td>${esc(t.phone || "—")}</td><td><span class="status ${t.can_export !== false ? "present" : "absent"}">${t.can_export !== false ? "Allowed" : "Restricted"}</span></td><td class="row-actions"><button class="text-button edit-teacher" type="button">Edit</button><button class="text-button danger delete-teacher" type="button">Delete</button></td></tr>`).join("")}</tbody></table></div>` : empty("No teacher profiles activated.");
+    $("#teachers-table").innerHTML = registered.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Report downloads</th><th>Actions</th></tr></thead><tbody>${registered.map(t => `<tr data-id="${t.id}"><td>${esc(t.name)}</td><td>${esc(t.profiles?.email)}</td><td>${esc(t.phone || "—")}</td><td><span class="status ${t.can_export !== false ? "present" : "absent"}">${t.can_export !== false ? "Allowed" : "Restricted"}</span></td><td class="row-actions"><button class="text-button edit-teacher" type="button">Edit</button><button class="text-button danger delete-teacher" type="button">Delete</button></td></tr>`).join("")}</tbody></table></div>` : empty("No teacher profiles activated.");
     $$(".edit-teacher").forEach(btn => btn.onclick = () => showTeacherEditForm(registered.find(t => t.id === btn.closest("tr").dataset.id)));
     $$(".delete-teacher").forEach(btn => btn.onclick = () => deleteTeacher(btn.closest("tr").dataset.id));
   }
   function showTeacherActivateForm(available) {
-    $("#teacher-form").innerHTML = available.length ? `<form id="teacher-create"><label>Account<select name="profile" required><option value="">Select signed-up teacher</option>${available.map(p => `<option value="${p.id}">${esc(p.full_name || p.email)} (${esc(p.email)})</option>`).join("")}</select></label><label>Display name<input name="name" required></label><label>Phone<input name="phone"></label><button class="primary">Activate teacher</button></form>` : `<p class="muted">No unassigned teacher accounts. Ask the teacher to sign up first.</p>`;
-  const form = $("#teacher-create"); if (form) form.onsubmit = async e => { e.preventDefault(); const f = new FormData(form); try { await api(state.db.from("teachers").insert({ profile_id:f.get("profile"), name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" })); flash("Teacher profile activated."); teachers(); } catch (err) { flash(err.message, true); } };  }
+    $("#teacher-form").innerHTML = available.length ? `<form id="teacher-create"><label>Account<select name="profile" required><option value="">Select signed-up teacher</option>${available.map(p => `<option value="${p.id}">${esc(p.full_name || p.email)} (${esc(p.email)})</option>`).join("")}</select></label><label>Display name<input name="name" required></label><label>Phone<input name="phone"></label><label>Report downloads<select name="can_export"><option value="true" selected>Allowed</option><option value="false">Restricted</option></select></label><button class="primary">Activate teacher</button></form>` : `<p class="muted">No unassigned teacher accounts. Ask the teacher to sign up first.</p>`;
+    const form = $("#teacher-create"); if (form) form.onsubmit = async e => { e.preventDefault(); const f = new FormData(form); try { await api(state.db.from("teachers").insert({ profile_id:f.get("profile"), name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" })); flash("Teacher profile activated."); teachers(); } catch (err) { flash(err.message, true); } };
+  }
   function showTeacherEditForm(teacher) {
-$("#teacher-form").innerHTML = `<form id="teacher-edit"><label>Display name<input name="name" required value="${esc(teacher.name)}"></label><label>Phone<input name="phone" value="${esc(teacher.phone || "")}"></label><label>Report downloads<select name="can_export"><option value="true" ${teacher.can_export !== false ? "selected" : ""}>Allowed</option><option value="false" ${teacher.can_export === false ? "selected" : ""}>Restricted</option></select></label><div class="toolbar"><button class="primary">Save changes</button><button type="button" class="text-button" id="cancel-teacher">Cancel</button></div></form>`;
+    $("#teacher-form").innerHTML = `<form id="teacher-edit"><label>Display name<input name="name" required value="${esc(teacher.name)}"></label><label>Phone<input name="phone" value="${esc(teacher.phone || "")}"></label><label>Report downloads<select name="can_export"><option value="true" ${teacher.can_export !== false ? "selected" : ""}>Allowed</option><option value="false" ${teacher.can_export === false ? "selected" : ""}>Restricted</option></select></label><div class="toolbar"><button class="primary">Save changes</button><button type="button" class="text-button" id="cancel-teacher">Cancel</button></div></form>`;
     $("#teacher-edit").onsubmit = e => updateTeacher(e, teacher.id);
     $("#cancel-teacher").onclick = () => teachers();
   }
-async function updateTeacher(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("teachers").update({ name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" }).eq("id", id)); flash("Teacher updated."); teachers(); } catch (err) { flash(err.message, true); } }
+  async function updateTeacher(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("teachers").update({ name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" }).eq("id", id)); flash("Teacher updated."); teachers(); } catch (err) { flash(err.message, true); } }
   async function deleteTeacher(id) {
     if (!confirm("Remove this teacher profile? Their sign-in account stays intact and can be reactivated later, but they'll be unassigned from any classes.")) return;
     try { await api(state.db.from("teachers").delete().eq("id", id)); flash("Teacher profile removed."); teachers(); }
@@ -174,32 +175,28 @@ async function updateTeacher(e, id) { e.preventDefault(); const f = new FormData
  
   async function reports() {
     setTemplate("#reports-template"); await getClasses(); const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1); $("#report-from").value = start.toISOString().slice(0, 10); $("#report-to").value = isoToday(); $("#report-class").innerHTML = classOptions("", "All available classes");
-$("#report-class").onchange = async () => { const classId = $("#report-class").value; const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("roll_number")); $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("")}`; };
+    $("#report-class").onchange = async () => { const classId = $("#report-class").value; const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("roll_number")); $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("")}`; };
     const allowExport = isAdmin() || state.teacher?.can_export !== false;
     $$(".export-only").forEach(el => el.classList.toggle("hidden", !allowExport));
     $("#export-restricted-note")?.classList.toggle("hidden", allowExport);
     $("#run-report").onclick = runReport; $("#excel-export-both").onclick = () => exportExcel("both"); $("#excel-export-summary").onclick = () => exportExcel("summary"); $("#excel-export-detail").onclick = () => exportExcel("detail"); $("#pdf-export").onclick = () => { if (allowExport) window.print(); }; $("#report-view").onchange = applyReportView; await runReport();
+  }
   async function runReport() {
     const from = $("#report-from").value, to = $("#report-to").value, classId = $("#report-class").value, studentId = $("#report-student").value; if (!from || !to || from > to) return flash("Choose a valid date range.", true);
     let q = state.db.from("attendance_sessions").select("id,attendance_date,class_id,classes(name,section)").gte("attendance_date", from).lte("attendance_date", to).order("attendance_date"); if (classId) q = q.eq("class_id", classId); const sessions = await api(q); const ids = sessions.map(s => s.id);
-let records = ids.length ? await api(state.db.from("attendance_records").select("id,session_id,student_id,status,remarks,students(name,roll_number)").in("session_id", ids)) : []; if (studentId) records = records.filter(r => r.student_id === studentId);
-const bySession = Object.fromEntries(sessions.map(s => [s.id, s])); state.reportRows = records.map(r => ({ id:r.id, date:bySession[r.session_id].attendance_date, class:`${bySession[r.session_id].classes?.name || ""} ${bySession[r.session_id].classes?.section || ""}`.trim(), student:r.students?.name || "", roll:r.students?.roll_number || "", status:r.status, remarks:r.remarks || "" }));
+    let records = ids.length ? await api(state.db.from("attendance_records").select("id,session_id,student_id,status,remarks,students(name,roll_number)").in("session_id", ids)) : []; if (studentId) records = records.filter(r => r.student_id === studentId);
+    const bySession = Object.fromEntries(sessions.map(s => [s.id, s])); state.reportRows = records.map(r => ({ id:r.id, date:bySession[r.session_id].attendance_date, class:`${bySession[r.session_id].classes?.name || ""} ${bySession[r.session_id].classes?.section || ""}`.trim(), student:r.students?.name || "", roll:r.students?.roll_number || "", status:r.status, remarks:r.remarks || "" }));
     state.reportRows.sort((a, b) => (a.roll || "").localeCompare(b.roll || "", undefined, { numeric:true }));
     const present = state.reportRows.filter(r => r.status === "present").length, absent = state.reportRows.filter(r => r.status === "absent").length, leave = state.reportRows.filter(r => r.status === "leave").length; $("#report-summary").innerHTML = `<article><span>Present</span><strong>${present}</strong></article><article><span>Absent</span><strong>${absent}</strong></article><article><span>Leave</span><strong>${leave}</strong></article>`;
- const admin = isAdmin();
+    const admin = isAdmin();
     $("#report-table").innerHTML = state.reportRows.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td>${admin ? `<select class="status-edit" data-id="${r.id}"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select>` : `<span class="status ${r.status}">${esc(r.status)}</span>`}</td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
     if (admin) $$(".status-edit").forEach(sel => sel.onchange = () => updateRecordStatus(sel.dataset.id, sel.value));
-renderStudentSummary();
+    renderStudentSummary();
     applyReportView();
   }
   async function updateRecordStatus(id, status) {
     try { await api(state.db.from("attendance_records").update({ status }).eq("id", id)); flash("Attendance status updated."); await runReport(); }
     catch (err) { flash(err.message, true); }
-  }
-  function applyReportView() {
-    const view = $("#report-view")?.value || "both";
-    $("#summary-section").style.display = view === "detail" ? "none" : "";
-    $("#detail-section").style.display = view === "summary" ? "none" : "";
   }
   function applyReportView() {
     const view = $("#report-view")?.value || "both";
@@ -213,15 +210,13 @@ renderStudentSummary();
       if (!map.has(key)) map.set(key, { student:r.student, roll:r.roll, present:0, absent:0, leave:0 });
       const entry = map.get(key); entry[r.status] = (entry[r.status] || 0) + 1;
     });
-return [...map.values()].map(e => { const total = e.present + e.absent + e.leave; return { ...e, total, pct: total ? Math.round((e.present / total) * 100) : 0 }; }).sort((a, b) => (a.roll || "").localeCompare(b.roll || "", undefined, { numeric:true }));
+    return [...map.values()].map(e => { const total = e.present + e.absent + e.leave; return { ...e, total, pct: total ? Math.round((e.present / total) * 100) : 0 }; }).sort((a, b) => (a.roll || "").localeCompare(b.roll || "", undefined, { numeric:true }));
   }
  function renderStudentSummary() {
     const rows = computeStudentSummary();
     const el = $("#student-summary-table"); if (!el) return;
-el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th><th>Attendance %</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
+   el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th><th>Attendance %</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
   }
- function detailSheetData() { return XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ Date:r.date, Class:r.class, Student:r.student, "Roll No.":r.roll, Status:r.status, Remarks:r.remarks }))); }
-  function summarySheetData() { return XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total, "Attendance %":r.pct }))); }
  function detailSheetData() { return XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ "Roll No.":r.roll, Student:r.student, Date:r.date, Class:r.class, Status:r.status, Remarks:r.remarks }))); }
   function summarySheetData() { return XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ "Roll No.":r.roll, Student:r.student, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total, "Attendance %":r.pct }))); }
   function exportExcel(mode = "both") {
