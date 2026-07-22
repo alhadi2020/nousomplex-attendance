@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nous Complex Attendance Portal</title>
+  <title>Nousomplex Attendance Portal</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
-  <link rel="stylesheet" href="styles.css"">
+  <link rel="stylesheet" href="assets/styles.css">
 </head>
 <body>
   <main id="auth-screen" class="auth-shell">
@@ -13,25 +13,25 @@
       <p class="eyebrow">NOUS COMPLEX</p><h1>Attendance Portal</h1>
       <p class="muted">Secure Attendance System</p>
       <form id="auth-form"><label>Email<input id="auth-email" type="email" required autocomplete="email"></label><label>Password<input id="auth-password" type="password" required minlength="8" autocomplete="current-password"></label><button id="auth-submit" class="primary" type="submit">Sign in</button></form>
-      <button id="signup-button" class="text-button" type="button">New teacher?</button>
+      <button id="signup-button" class="text-button" type="button">New Teacher?</button>
       <p id="auth-message" class="message"></p>
     </section>
   </main>
 
   <div id="app" class="app hidden">
-    <aside class="sidebar"><div class="brand"><span class="brand-mark">N</span><span>Nous Complex<br><small>Attendance</small></span></div><nav id="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="attendance">Mark Attendance</button><button data-page="students">Students</button><button data-page="classes">Classes</button><button data-page="teachers" data-admin-only>Teachers</button><button data-page="reports">Reports</button></nav><div class="sidebar-bottom"><p id="user-name"></p><span id="user-role" class="role-badge"></span><button id="signout" class="text-button">Sign out</button></div></aside>
+    <aside class="sidebar"><div class="brand"><span class="brand-mark">N</span><span>Nous Complex<br><small>Attendance</small></span></div><nav id="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="attendance">Mark Attendance</button><button data-page="students">Students</button><button data-page="classes">Classes</button><button data-page="teachers" data-admin-only>Teachers</button><button data-page="reports">Reports & Exports</button></nav><div class="sidebar-bottom"><p id="user-name"></p><span id="user-role" class="role-badge"></span><button id="signout" class="text-button">Sign Out</button></div></aside>
     <section class="main"><header><button id="menu-toggle" class="mobile-only" aria-label="Open menu">☰</button><div><h1 id="page-title">Dashboard</h1><p id="today"></p></div></header><div id="flash" class="flash"></div><div id="page-content"></div></section>
   </div>
 
-  <template id="dashboard-template"><div class="stats"><article><span>Students</span><strong data-stat="students">0</strong></article><article><span>Classes</span><strong data-stat="classes">0</strong></article><article><span>Present today</span><strong data-stat="present">0</strong></article><article><span>Attendance today</span><strong data-stat="rate">0%</strong></article></div><section class="panel"><div class="panel-heading"><h2>Today’s attendance</h2><button class="primary" data-go="attendance">Mark Attendance</button></div><div id="today-table"></div></section></template>
-  <template id="attendance-template"><section class="panel"><div class="form-grid"><label>Date<input id="attendance-date" type="date"></label><label>Class<select id="attendance-class"><option value="">Select a class</option></select></label></div><div class="toolbar"><button id="load-roster" class="secondary">Load students</button><button id="save-attendance" class="primary" disabled>Save Attendance</button></div><div id="roster"></div></section></template>
-  <template id="students-template"><section class="panel"><div class="panel-heading"><h2>Student Register</h2><button class="primary" id="new-student" data-admin-only>Add student</button></div><div id="student-form" class="inline-form hidden"></div><div id="students-table"></div></section></template>
+  <template id="dashboard-template"><div class="stats"><article><span>Students</span><strong data-stat="students">0</strong></article><article><span>Classes</span><strong data-stat="classes">0</strong></article><article><span>Present today</span><strong data-stat="present">0</strong></article><article><span>Attendance today</span><strong data-stat="rate">0%</strong></article></div><section class="panel"><div class="panel-heading"><h2>Today’s attendance</h2><button class="primary" data-go="attendance">Mark attendance</button></div><div id="today-table"></div></section></template>
+  <template id="attendance-template"><section class="panel"><div class="form-grid"><label>Date<input id="attendance-date" type="date"></label><label>Class<select id="attendance-class"><option value="">Select a class</option></select></label></div><div class="toolbar"><button id="load-roster" class="secondary">Load students</button><button id="save-attendance" class="primary" disabled>Save attendance</button></div><div id="roster"></div></section></template>
+  <template id="students-template"><section class="panel"><div class="panel-heading"><h2>Student register</h2><button class="primary" id="new-student" data-admin-only>Add student</button></div><div id="student-form" class="inline-form hidden"></div><div id="students-table"></div></section></template>
   <template id="classes-template"><section class="panel"><div class="panel-heading"><h2>Classes</h2><button class="primary" id="new-class" data-admin-only>Add class</button></div><div id="class-form" class="inline-form hidden"></div><div id="classes-table"></div></section></template>
-  <template id="teachers-template"><section class="panel"><div class="panel-heading"><h2>Teacher Registration</h2></div><p class="muted">A teacher creates an account first. Select that account below to activate their staff profile.</p><div id="teacher-form" class="inline-form"></div><div id="teachers-table"></div></section></template>
-  <template id="reports-template"><section class="panel"><div class="form-grid report-filters"><label>From<input id="report-from" type="date"></label><label>To<input id="report-to" type="date"></label><label>Class<select id="report-class"><option value="">All available classes</option></select></label><label>Student<select id="report-student"><option value="">All students</option></select></label></div><div class="toolbar"><button id="run-report" class="secondary">Run Report</button><button id="Excel-Export" class="primary">Download Excel</button><button id="pdf-export" class="secondary">Save PDF</button></div><div id="report-summary" class="stats compact"></div><div id="report-table"></div></section></template>
+  <template id="teachers-template"><section class="panel"><div class="panel-heading"><h2>Teacher registration</h2></div><p class="muted">A teacher creates an account first. Select that account below to activate their staff profile.</p><div id="teacher-form" class="inline-form"></div><div id="teachers-table"></div></section></template>
+  <template id="reports-template"><section class="panel"><div class="form-grid report-filters"><label>From<input id="report-from" type="date"></label><label>To<input id="report-to" type="date"></label><label>Class<select id="report-class"><option value="">All available classes</option></select></label><label>Student<select id="report-student"><option value="">All students</option></select></label></div><div class="toolbar"><button id="run-report" class="secondary">Run report</button><button id="excel-export" class="primary">Download Excel</button><button id="pdf-export" class="secondary">Print / Save PDF</button></div><div id="report-summary" class="stats compact"></div><div id="report-table"></div><div class="panel-heading" style="margin-top:24px"><h2>Summary by student</h2></div><div id="student-summary-table"></div></section></template>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="config.js"></script><script src="app.js"></script>
+  <script src="config.js"></script><script src="assets/app.js"></script>
 </body>
 </html>
