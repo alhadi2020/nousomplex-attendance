@@ -1,8 +1,9 @@
-/* Nous Complex Attendance Portal — browser-only client. Data access is protected by Supabase RLS. */
+/* Nousomplex Attendance Portal — browser-only client. Data access is protected by Supabase RLS. */
 (() => {
   const cfg = window.APP_CONFIG || {};
   const configured = cfg.SUPABASE_URL?.startsWith("https://") && !cfg.SUPABASE_ANON_KEY?.startsWith("PASTE_");
   const $ = (s, root = document) => root.querySelector(s);
+  const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const content = $("#page-content");
   const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [] };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
@@ -13,12 +14,12 @@
   const empty = text => `<div class="empty">${esc(text)}</div>`;
   const isAdmin = () => state.profile?.role === "admin";
   const ensureConfigured = () => { if (!configured) { $("#auth-message").textContent = "Add your Supabase Project URL and anon key to config.js before signing in."; return false; } return true; };
-
+ 
   async function api(run) { const { data, error } = await run; if (error) throw error; return data; }
-  async function getClasses() { state.classes = await api(state.db.from("classes").select("id,name,section,academic_year,teachers(name)").order("name")); return state.classes; }
+  async function getClasses() { state.classes = await api(state.db.from("classes").select("id,name,section,academic_year,teacher_id,teachers(name)").order("name")); return state.classes; }
   function classOptions(selected = "", none = "Select a class") { return `<option value="">${none}</option>` + state.classes.map(c => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join(""); }
   function applyRoleVisibility() { document.querySelectorAll("[data-admin-only]").forEach(el => el.classList.toggle("hidden", !isAdmin())); }
-
+ 
   async function loadSession() {
     const { data: { session } } = await state.db.auth.getSession();
     if (!session) return showAuth();
@@ -31,7 +32,7 @@
     applyRoleVisibility(); await navigate("dashboard");
   }
   function showAuth() { state.user = state.profile = state.teacher = null; $("#app").classList.add("hidden"); $("#auth-screen").classList.remove("hidden"); }
-
+ 
   async function signIn(event) {
     event.preventDefault(); if (!ensureConfigured()) return;
     const email = $("#auth-email").value.trim(), password = $("#auth-password").value;
@@ -43,14 +44,14 @@
     if (!email || !password) return $("#auth-message").textContent = "Enter an email and a password of at least 8 characters first.";
     try { await api(state.db.auth.signUp({ email, password, options: { data: { full_name: email.split("@")[0] } } })); $("#auth-message").textContent = "Account created. Check your email to confirm it, then ask an administrator to activate your teacher profile."; } catch (e) { $("#auth-message").textContent = e.message; }
   }
-
+ 
   async function navigate(page) {
     state.page = page; document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
-    $("#page-title").textContent = ({ dashboard:"Dashboard", attendance:"Mark attendance", students:"Students", classes:"Classes", teachers:"Teachers", reports:"Reports" })[page];
+    $("#page-title").textContent = ({ dashboard:"Dashboard", attendance:"Mark attendance", students:"Students", classes:"Classes", teachers:"Teachers", reports:"Reports & exports" })[page];
     $("#today").textContent = fmt.format(new Date()); $(".sidebar")?.classList.remove("open");
-    try { await ({ dashboard, attendance, students, classes, teachers, reports})[page](); } catch (e) { content.innerHTML = empty(e.message); flash(e.message, true); }
+    try { await ({ dashboard, attendance, students, classes, teachers, reports })[page](); } catch (e) { content.innerHTML = empty(e.message); flash(e.message, true); }
   }
-
+ 
   async function dashboard() {
     setTemplate("#dashboard-template"); const day = isoToday(); const classes = await getClasses();
     const students = await api(state.db.from("students").select("id"));
@@ -62,7 +63,7 @@
     $("#today-table").innerHTML = rows ? `<div class="table-wrap"><table><thead><tr><th>Class</th><th>Present</th><th>Absent</th><th>Leave</th></tr></thead><tbody>${rows}</tbody></table></div>` : empty("No attendance has been recorded today.");
     $("[data-go='attendance']").onclick = () => navigate("attendance");
   }
-
+ 
   async function attendance() {
     setTemplate("#attendance-template"); await getClasses(); $("#attendance-date").value = isoToday(); $("#attendance-class").innerHTML = classOptions();
     $("#load-roster").onclick = loadRoster; $("#save-attendance").onclick = saveAttendance;
@@ -85,29 +86,81 @@
       await api(state.db.from("attendance_records").upsert(records, { onConflict:"session_id,student_id" })); flash("Attendance saved successfully.");
     } catch (e) { flash(e.message, true); }
   }
-
+ 
   async function students() {
-    setTemplate("#students-template"); await getClasses(); const rows = await api(state.db.from("students").select("id,name,roll_number,email,phone,classes(name,section)").order("name"));
-    $("#students-table").innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Roll no.</th><th>Class</th><th>Email</th><th>Phone</th></tr></thead><tbody>${rows.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(s.roll_number)}</td><td>${esc(s.classes?.name)} ${esc(s.classes?.section || "")}</td><td>${esc(s.email || "—")}</td><td>${esc(s.phone || "—")}</td></tr>`).join("")}</tbody></table></div>` : empty("No students found.");
-    if (isAdmin()) $("#new-student").onclick = () => { $("#student-form").classList.remove("hidden"); $("#student-form").innerHTML = `<form id="student-create"><label>Name<input name="name" required></label><label>Roll no.<input name="roll" required></label><label>Class<select name="class" required>${classOptions("", "Select class")}</select></label><label>Email<input name="email" type="email"></label><label>Phone<input name="phone"></label><button class="primary">Save student</button></form>`; $("#student-create").onsubmit = createStudent; };
+    setTemplate("#students-template"); await getClasses();
+    const rows = await api(state.db.from("students").select("id,name,roll_number,email,phone,class_id,classes(name,section)").order("name"));
+    const admin = isAdmin();
+    $("#students-table").innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Roll no.</th><th>Class</th><th>Email</th><th>Phone</th>${admin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${rows.map(s => `<tr data-id="${s.id}"><td>${esc(s.name)}</td><td>${esc(s.roll_number)}</td><td>${esc(s.classes?.name)} ${esc(s.classes?.section || "")}</td><td>${esc(s.email || "—")}</td><td>${esc(s.phone || "—")}</td>${admin ? `<td class="row-actions"><button class="text-button edit-student" type="button">Edit</button><button class="text-button danger delete-student" type="button">Delete</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : empty("No students found.");
+    if (admin) {
+      $("#new-student").onclick = () => showStudentForm();
+      $$(".edit-student").forEach(btn => btn.onclick = () => showStudentForm(rows.find(r => r.id === btn.closest("tr").dataset.id)));
+      $$(".delete-student").forEach(btn => btn.onclick = () => deleteStudent(btn.closest("tr").dataset.id));
+    }
+  }
+  function showStudentForm(student = null) {
+    const form = $("#student-form"); form.classList.remove("hidden");
+    form.innerHTML = `<form id="student-create"><label>Name<input name="name" required value="${student ? esc(student.name) : ""}"></label><label>Roll no.<input name="roll" required value="${student ? esc(student.roll_number) : ""}"></label><label>Class<select name="class" required>${classOptions(student?.class_id || "", "Select class")}</select></label><label>Email<input name="email" type="email" value="${student ? esc(student.email || "") : ""}"></label><label>Phone<input name="phone" value="${student ? esc(student.phone || "") : ""}"></label><div class="toolbar"><button class="primary">${student ? "Save changes" : "Save student"}</button>${student ? `<button type="button" class="text-button" id="cancel-student">Cancel</button>` : ""}</div></form>`;
+    $("#student-create").onsubmit = e => student ? updateStudent(e, student.id) : createStudent(e);
+    if (student) $("#cancel-student").onclick = () => form.classList.add("hidden");
   }
   async function createStudent(e) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("students").insert({ name:f.get("name"), roll_number:f.get("roll"), class_id:f.get("class"), email:f.get("email") || null, phone:f.get("phone") || null })); flash("Student registered."); students(); } catch (err) { flash(err.message, true); } }
-
+  async function updateStudent(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("students").update({ name:f.get("name"), roll_number:f.get("roll"), class_id:f.get("class"), email:f.get("email") || null, phone:f.get("phone") || null }).eq("id", id)); flash("Student updated."); students(); } catch (err) { flash(err.message, true); } }
+  async function deleteStudent(id) {
+    if (!confirm("Delete this student? This cannot be undone.")) return;
+    try { await api(state.db.from("students").delete().eq("id", id)); flash("Student deleted."); students(); }
+    catch (err) { flash(/foreign key|violat/i.test(err.message) ? "This student has attendance history and cannot be deleted." : err.message, true); }
+  }
+ 
   async function classes() {
-    setTemplate("#classes-template"); await getClasses(); $("#classes-table").innerHTML = state.classes.length ? `<div class="table-wrap"><table><thead><tr><th>Class</th><th>Section</th><th>Academic year</th><th>Teacher</th></tr></thead><tbody>${state.classes.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.section || "—")}</td><td>${esc(c.academic_year)}</td><td>${esc(c.teachers?.name || "Unassigned")}</td></tr>`).join("")}</tbody></table></div>` : empty("No classes found.");
-    if (isAdmin()) $("#new-class").onclick = async () => { const teachers = await api(state.db.from("teachers").select("id,name").order("name")); $("#class-form").classList.remove("hidden"); $("#class-form").innerHTML = `<form id="class-create"><label>Class name<input name="name" placeholder="Grade 8" required></label><label>Section<input name="section" value="A"></label><label>Academic year<input name="year" value="${new Date().getFullYear()}" required></label><label>Teacher<select name="teacher"><option value="">Unassigned</option>${teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select></label><button class="primary">Save class</button></form>`; $("#class-create").onsubmit = createClass; };
+    setTemplate("#classes-template"); await getClasses(); const admin = isAdmin();
+    $("#classes-table").innerHTML = state.classes.length ? `<div class="table-wrap"><table><thead><tr><th>Class</th><th>Section</th><th>Academic year</th><th>Teacher</th>${admin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${state.classes.map(c => `<tr data-id="${c.id}"><td>${esc(c.name)}</td><td>${esc(c.section || "—")}</td><td>${esc(c.academic_year)}</td><td>${esc(c.teachers?.name || "Unassigned")}</td>${admin ? `<td class="row-actions"><button class="text-button edit-class" type="button">Edit</button><button class="text-button danger delete-class" type="button">Delete</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : empty("No classes found.");
+    if (admin) {
+      $("#new-class").onclick = () => showClassForm();
+      $$(".edit-class").forEach(btn => btn.onclick = () => showClassForm(state.classes.find(c => c.id === btn.closest("tr").dataset.id)));
+      $$(".delete-class").forEach(btn => btn.onclick = () => deleteClass(btn.closest("tr").dataset.id));
+    }
+  }
+  async function showClassForm(cls = null) {
+    const teachers = await api(state.db.from("teachers").select("id,name").order("name"));
+    const form = $("#class-form"); form.classList.remove("hidden");
+    form.innerHTML = `<form id="class-create"><label>Class name<input name="name" placeholder="Grade 8" required value="${cls ? esc(cls.name) : ""}"></label><label>Section<input name="section" value="${cls ? esc(cls.section || "") : "A"}"></label><label>Academic year<input name="year" required value="${cls ? esc(cls.academic_year) : new Date().getFullYear()}"></label><label>Teacher<select name="teacher"><option value="">Unassigned</option>${teachers.map(t => `<option value="${t.id}" ${cls?.teacher_id === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><div class="toolbar"><button class="primary">${cls ? "Save changes" : "Save class"}</button>${cls ? `<button type="button" class="text-button" id="cancel-class">Cancel</button>` : ""}</div></form>`;
+    $("#class-create").onsubmit = e => cls ? updateClass(e, cls.id) : createClass(e);
+    if (cls) $("#cancel-class").onclick = () => form.classList.add("hidden");
   }
   async function createClass(e) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("classes").insert({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null })); flash("Class created."); classes(); } catch (err) { flash(err.message, true); } }
-
+  async function updateClass(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("classes").update({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null }).eq("id", id)); flash("Class updated."); classes(); } catch (err) { flash(err.message, true); } }
+  async function deleteClass(id) {
+    if (!confirm("Delete this class? This cannot be undone.")) return;
+    try { await api(state.db.from("classes").delete().eq("id", id)); flash("Class deleted."); classes(); }
+    catch (err) { flash(/foreign key|violat/i.test(err.message) ? "This class still has students assigned and cannot be deleted." : err.message, true); }
+  }
+ 
   async function teachers() {
     if (!isAdmin()) return navigate("dashboard"); setTemplate("#teachers-template");
     const [profiles, registered] = await Promise.all([api(state.db.from("profiles").select("id,full_name,email").eq("role", "teacher").order("email")), api(state.db.from("teachers").select("id,profile_id,name,phone,profiles(email)").order("name"))]);
     const used = new Set(registered.map(t => t.profile_id)); const available = profiles.filter(p => !used.has(p.id));
+    showTeacherActivateForm(available);
+    $("#teachers-table").innerHTML = registered.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Actions</th></tr></thead><tbody>${registered.map(t => `<tr data-id="${t.id}"><td>${esc(t.name)}</td><td>${esc(t.profiles?.email)}</td><td>${esc(t.phone || "—")}</td><td class="row-actions"><button class="text-button edit-teacher" type="button">Edit</button><button class="text-button danger delete-teacher" type="button">Delete</button></td></tr>`).join("")}</tbody></table></div>` : empty("No teacher profiles activated.");
+    $$(".edit-teacher").forEach(btn => btn.onclick = () => showTeacherEditForm(registered.find(t => t.id === btn.closest("tr").dataset.id)));
+    $$(".delete-teacher").forEach(btn => btn.onclick = () => deleteTeacher(btn.closest("tr").dataset.id));
+  }
+  function showTeacherActivateForm(available) {
     $("#teacher-form").innerHTML = available.length ? `<form id="teacher-create"><label>Account<select name="profile" required><option value="">Select signed-up teacher</option>${available.map(p => `<option value="${p.id}">${esc(p.full_name || p.email)} (${esc(p.email)})</option>`).join("")}</select></label><label>Display name<input name="name" required></label><label>Phone<input name="phone"></label><button class="primary">Activate teacher</button></form>` : `<p class="muted">No unassigned teacher accounts. Ask the teacher to sign up first.</p>`;
     const form = $("#teacher-create"); if (form) form.onsubmit = async e => { e.preventDefault(); const f = new FormData(form); try { await api(state.db.from("teachers").insert({ profile_id:f.get("profile"), name:f.get("name"), phone:f.get("phone") || null })); flash("Teacher profile activated."); teachers(); } catch (err) { flash(err.message, true); } };
-    $("#teachers-table").innerHTML = registered.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>${registered.map(t => `<tr><td>${esc(t.name)}</td><td>${esc(t.profiles?.email)}</td><td>${esc(t.phone || "—")}</td></tr>`).join("")}</tbody></table></div>` : empty("No teacher profiles activated.");
   }
-
+  function showTeacherEditForm(teacher) {
+    $("#teacher-form").innerHTML = `<form id="teacher-edit"><label>Display name<input name="name" required value="${esc(teacher.name)}"></label><label>Phone<input name="phone" value="${esc(teacher.phone || "")}"></label><div class="toolbar"><button class="primary">Save changes</button><button type="button" class="text-button" id="cancel-teacher">Cancel</button></div></form>`;
+    $("#teacher-edit").onsubmit = e => updateTeacher(e, teacher.id);
+    $("#cancel-teacher").onclick = () => teachers();
+  }
+  async function updateTeacher(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("teachers").update({ name:f.get("name"), phone:f.get("phone") || null }).eq("id", id)); flash("Teacher updated."); teachers(); } catch (err) { flash(err.message, true); } }
+  async function deleteTeacher(id) {
+    if (!confirm("Remove this teacher profile? Their sign-in account stays intact and can be reactivated later, but they'll be unassigned from any classes.")) return;
+    try { await api(state.db.from("teachers").delete().eq("id", id)); flash("Teacher profile removed."); teachers(); }
+    catch (err) { flash(err.message, true); }
+  }
+ 
   async function reports() {
     setTemplate("#reports-template"); await getClasses(); const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1); $("#report-from").value = start.toISOString().slice(0, 10); $("#report-to").value = isoToday(); $("#report-class").innerHTML = classOptions("", "All available classes");
     $("#report-class").onchange = async () => { const classId = $("#report-class").value; const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("name")); $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(s.roll_number)})</option>`).join("")}`; };
@@ -120,9 +173,32 @@
     const bySession = Object.fromEntries(sessions.map(s => [s.id, s])); state.reportRows = records.map(r => ({ date:bySession[r.session_id].attendance_date, class:`${bySession[r.session_id].classes?.name || ""} ${bySession[r.session_id].classes?.section || ""}`.trim(), student:r.students?.name || "", roll:r.students?.roll_number || "", status:r.status, remarks:r.remarks || "" }));
     const present = state.reportRows.filter(r => r.status === "present").length, absent = state.reportRows.filter(r => r.status === "absent").length, leave = state.reportRows.filter(r => r.status === "leave").length; $("#report-summary").innerHTML = `<article><span>Present</span><strong>${present}</strong></article><article><span>Absent</span><strong>${absent}</strong></article><article><span>Leave</span><strong>${leave}</strong></article>`;
     $("#report-table").innerHTML = state.reportRows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Class</th><th>Student</th><th>Roll no.</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td><span class="status ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
+    renderStudentSummary();
   }
-  function exportExcel() { if (!state.reportRows.length) return flash("Run a report with data before exporting.", true); const sheet = XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ Date:r.date, Class:r.class, Student:r.student, "Roll No.":r.roll, Status:r.status, Remarks:r.remarks }))); const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, "Attendance"); XLSX.writeFile(book, `attendance-report-${isoToday()}.xlsx`); }
-
+  function computeStudentSummary() {
+    const map = new Map();
+    state.reportRows.forEach(r => {
+      const key = r.roll || r.student;
+      if (!map.has(key)) map.set(key, { student:r.student, roll:r.roll, present:0, absent:0, leave:0 });
+      const entry = map.get(key); entry[r.status] = (entry[r.status] || 0) + 1;
+    });
+    return [...map.values()].map(e => ({ ...e, total: e.present + e.absent + e.leave })).sort((a, b) => a.student.localeCompare(b.student));
+  }
+  function renderStudentSummary() {
+    const rows = computeStudentSummary();
+    const el = $("#student-summary-table"); if (!el) return;
+    el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>Roll no.</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
+  }
+  function exportExcel() {
+    if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
+    const detailSheet = XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ Date:r.date, Class:r.class, Student:r.student, "Roll No.":r.roll, Status:r.status, Remarks:r.remarks })));
+    const summarySheet = XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total })));
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, detailSheet, "Attendance");
+    XLSX.utils.book_append_sheet(book, summarySheet, "Summary by student");
+    XLSX.writeFile(book, `attendance-report-${isoToday()}.xlsx`);
+  }
+ 
   function init() {
     if (configured) state.db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
     $("#auth-form").onsubmit = signIn; $("#signup-button").onclick = signUp; $("#signout").onclick = async () => { await state.db.auth.signOut(); showAuth(); };
