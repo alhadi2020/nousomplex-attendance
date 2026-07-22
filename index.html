@@ -10,8 +10,8 @@
 <body>
   <main id="auth-screen" class="auth-shell">
     <section class="auth-card">
-      <p class="eyebrow">NOUS COMPLEX</p><h1>Attendance Portal</h1>
-      <p class="muted">Secure Attendance System</p>
+      <img src="NOUS COMPLEX PNG.png" alt="Nous Complex Logo" style="max-width: 200px; height: auto; margin-bottom: 15px;">
+<p class="muted">Secure Attendance System</p>
       <form id="auth-form"><label>Email<input id="auth-email" type="email" required autocomplete="email"></label><label>Password<input id="auth-password" type="password" required minlength="8" autocomplete="current-password"></label><button id="auth-submit" class="primary" type="submit">Sign in</button></form>
       <button id="signup-button" class="text-button" type="button">New Teacher?</button>
       <p id="auth-message" class="message"></p>
@@ -19,7 +19,9 @@
   </main>
 
   <div id="app" class="app hidden">
-    <aside class="sidebar"><div class="brand"><span class="brand-mark">N</span><span>Nous Complex<br><small>Attendance</small></span></div><nav id="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="attendance">Mark Attendance</button><button data-page="students">Students</button><button data-page="classes">Classes</button><button data-page="teachers" data-admin-only>Teachers</button><button data-page="reports">Reports</button></nav><div class="sidebar-bottom"><p id="user-name"></p><span id="user-role" class="role-badge"></span><button id="signout" class="text-button"> Sign Out </button></div></aside>
+    <aside class="sidebar"><div class="brand">
+  <img src="NOUS COMPLEX PNG.png" alt="Nous Complex Logo" style="max-height: 40px; width: auto;">
+</div><nav id="nav"><button data-page="dashboard" class="active">Dashboard</button><button data-page="attendance">Mark Attendance</button><button data-page="students">Students</button><button data-page="classes">Classes</button><button data-page="teachers" data-admin-only>Teachers</button><button data-page="reports">Reports</button></nav><div class="sidebar-bottom"><p id="user-name"></p><span id="user-role" class="role-badge"></span><button id="signout" class="text-button"> Sign Out </button></div></aside>
     <section class="main"><header><button id="menu-toggle" class="mobile-only" aria-label="Open menu">☰</button><div><h1 id="page-title">Dashboard</h1><p id="today"></p></div></header><div id="flash" class="flash"></div><div id="page-content"></div></section>
   </div>
 
