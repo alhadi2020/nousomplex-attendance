@@ -114,7 +114,7 @@
     <section class="panel">
       <div class="panel-heading">
         <h2>Student Register</h2>
-        <button class="primary" id="new-student" data-admin-only style="display: none;">Add Student</button>
+        <button class="primary" id="new-student" data-admin-only>Add Student</button>
       </div>
       <div class="form-grid" style="grid-template-columns:1fr">
         <label>Filter By Class
@@ -130,7 +130,7 @@
     <section class="panel">
       <div class="panel-heading">
         <h2>Classes</h2>
-        <button class="primary" id="new-class" data-admin-only style="display: none;">Add class</button>
+        <button class="primary" id="new-class" data-admin-only>Add class</button>
       </div>
       <div id="class-form" class="inline-form hidden"></div>
       <div id="classes-table"></div>
@@ -205,33 +205,48 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="config.js"></script>
   
-  <!-- Add this script to handle hiding buttons based on user role -->
+  <!-- Script to control button visibility based on user role -->
   <script>
     // Wait for the page to load
     document.addEventListener('DOMContentLoaded', function() {
-      // Check if user is logged in
-      const userRole = localStorage.getItem('userRole');
-      
-      // If user is a teacher (not admin), hide admin buttons
-      if (userRole && userRole.toLowerCase() !== 'admin') {
-        // Hide "Add Student" button
+      // Function to check if user is admin
+      function isAdmin() {
+        const userRole = localStorage.getItem('userRole');
+        return userRole && userRole.toLowerCase() === 'admin';
+      }
+
+      // Function to show/hide admin-only buttons
+      function toggleAdminButtons() {
+        const isUserAdmin = isAdmin();
+        
+        // Show/Hide "Add Student" button
         const addStudentBtn = document.getElementById('new-student');
         if (addStudentBtn) {
-          addStudentBtn.style.display = 'none';
+          addStudentBtn.style.display = isUserAdmin ? '' : 'none';
         }
         
-        // Hide "Add Class" button
+        // Show/Hide "Add Class" button
         const addClassBtn = document.getElementById('new-class');
         if (addClassBtn) {
-          addClassBtn.style.display = 'none';
+          addClassBtn.style.display = isUserAdmin ? '' : 'none';
         }
         
-        // Hide "Teachers" tab from sidebar
+        // Show/Hide "Teachers" tab in sidebar
         const teachersTab = document.querySelector('[data-page="teachers"]');
         if (teachersTab) {
-          teachersTab.style.display = 'none';
+          teachersTab.style.display = isUserAdmin ? '' : 'none';
         }
       }
+
+      // Run the function
+      toggleAdminButtons();
+
+      // Also run it when localStorage changes (e.g., after login)
+      window.addEventListener('storage', function(e) {
+        if (e.key === 'userRole') {
+          toggleAdminButtons();
+        }
+      });
     });
   </script>
   
