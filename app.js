@@ -175,24 +175,24 @@
     $("#report-table").innerHTML = state.reportRows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Class</th><th>Student</th><th>Roll no.</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td><span class="status ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
     renderStudentSummary();
   }
-  function computeStudentSummary() {
+ function computeStudentSummary() {
     const map = new Map();
     state.reportRows.forEach(r => {
       const key = r.roll || r.student;
       if (!map.has(key)) map.set(key, { student:r.student, roll:r.roll, present:0, absent:0, leave:0 });
       const entry = map.get(key); entry[r.status] = (entry[r.status] || 0) + 1;
     });
-    return [...map.values()].map(e => ({ ...e, total: e.present + e.absent + e.leave })).sort((a, b) => a.student.localeCompare(b.student));
+    return [...map.values()].map(e => { const total = e.present + e.absent + e.leave; return { ...e, total, pct: total ? Math.round((e.present / total) * 100) : 0 }; }).sort((a, b) => a.student.localeCompare(b.student));
   }
-  function renderStudentSummary() {
+ function renderStudentSummary() {
     const rows = computeStudentSummary();
     const el = $("#student-summary-table"); if (!el) return;
-    el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>Roll no.</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
+    el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Attendance %</th><th>Student</th><th>Roll no.</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th></tr></thead><tbody>${rows.map(r => `<tr><td><strong>${r.pct}%</strong></td><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
   }
   function exportExcel() {
     if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
     const detailSheet = XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ Date:r.date, Class:r.class, Student:r.student, "Roll No.":r.roll, Status:r.status, Remarks:r.remarks })));
-    const summarySheet = XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total })));
+    const summarySheet = XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ "Attendance %":r.pct, Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total })));
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, detailSheet, "Attendance");
     XLSX.utils.book_append_sheet(book, summarySheet, "Summary by student");
