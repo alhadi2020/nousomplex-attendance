@@ -187,12 +187,12 @@
  function renderStudentSummary() {
     const rows = computeStudentSummary();
     const el = $("#student-summary-table"); if (!el) return;
-    el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Attendance %</th><th>Student</th><th>Roll no.</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th></tr></thead><tbody>${rows.map(r => `<tr><td><strong>${r.pct}%</strong></td><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
+   el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>Roll no.</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th><th>Attendance %</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
   }
   function exportExcel() {
     if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
     const detailSheet = XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ Date:r.date, Class:r.class, Student:r.student, "Roll No.":r.roll, Status:r.status, Remarks:r.remarks })));
-    const summarySheet = XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ "Attendance %":r.pct, Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total })));
+  const summarySheet = XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total, "Attendance %":r.pct })));
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, detailSheet, "Attendance");
     XLSX.utils.book_append_sheet(book, summarySheet, "Summary by student");
