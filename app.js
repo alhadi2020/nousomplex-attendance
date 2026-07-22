@@ -164,7 +164,7 @@
   async function reports() {
     setTemplate("#reports-template"); await getClasses(); const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1); $("#report-from").value = start.toISOString().slice(0, 10); $("#report-to").value = isoToday(); $("#report-class").innerHTML = classOptions("", "All available classes");
     $("#report-class").onchange = async () => { const classId = $("#report-class").value; const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("name")); $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.name)} (${esc(s.roll_number)})</option>`).join("")}`; };
-    $("#run-report").onclick = runReport; $("#excel-export").onclick = exportExcel; $("#pdf-export").onclick = () => window.print(); await runReport();
+  $("#run-report").onclick = runReport; $("#excel-export-both").onclick = () => exportExcel("both"); $("#excel-export-summary").onclick = () => exportExcel("summary"); $("#excel-export-detail").onclick = () => exportExcel("detail"); $("#pdf-export").onclick = () => window.print(); $("#report-view").onchange = applyReportView; await runReport();
   }
   async function runReport() {
     const from = $("#report-from").value, to = $("#report-to").value, classId = $("#report-class").value, studentId = $("#report-student").value; if (!from || !to || from > to) return flash("Choose a valid date range.", true);
@@ -173,7 +173,13 @@
     const bySession = Object.fromEntries(sessions.map(s => [s.id, s])); state.reportRows = records.map(r => ({ date:bySession[r.session_id].attendance_date, class:`${bySession[r.session_id].classes?.name || ""} ${bySession[r.session_id].classes?.section || ""}`.trim(), student:r.students?.name || "", roll:r.students?.roll_number || "", status:r.status, remarks:r.remarks || "" }));
     const present = state.reportRows.filter(r => r.status === "present").length, absent = state.reportRows.filter(r => r.status === "absent").length, leave = state.reportRows.filter(r => r.status === "leave").length; $("#report-summary").innerHTML = `<article><span>Present</span><strong>${present}</strong></article><article><span>Absent</span><strong>${absent}</strong></article><article><span>Leave</span><strong>${leave}</strong></article>`;
     $("#report-table").innerHTML = state.reportRows.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Class</th><th>Student</th><th>Roll no.</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td><span class="status ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
-    renderStudentSummary();
+ renderStudentSummary();
+    applyReportView();
+  }
+  function applyReportView() {
+    const view = $("#report-view")?.value || "both";
+    $("#summary-section").style.display = view === "detail" ? "none" : "";
+    $("#detail-section").style.display = view === "summary" ? "none" : "";
   }
  function computeStudentSummary() {
     const map = new Map();
@@ -189,14 +195,15 @@
     const el = $("#student-summary-table"); if (!el) return;
    el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>Roll no.</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th><th>Attendance %</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.student)}</td><td>${esc(r.roll)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
   }
-  function exportExcel() {
+ function detailSheetData() { return XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ Date:r.date, Class:r.class, Student:r.student, "Roll No.":r.roll, Status:r.status, Remarks:r.remarks }))); }
+  function summarySheetData() { return XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total, "Attendance %":r.pct }))); }
+  function exportExcel(mode = "both") {
     if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
-    const detailSheet = XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ Date:r.date, Class:r.class, Student:r.student, "Roll No.":r.roll, Status:r.status, Remarks:r.remarks })));
-  const summarySheet = XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ Student:r.student, "Roll No.":r.roll, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total, "Attendance %":r.pct })));
     const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(book, detailSheet, "Attendance");
-    XLSX.utils.book_append_sheet(book, summarySheet, "Summary by student");
-    XLSX.writeFile(book, `attendance-report-${isoToday()}.xlsx`);
+    if (mode === "both" || mode === "detail") XLSX.utils.book_append_sheet(book, detailSheetData(), "Attendance");
+    if (mode === "both" || mode === "summary") XLSX.utils.book_append_sheet(book, summarySheetData(), "Summary by student");
+    const suffix = mode === "both" ? "" : `-${mode}`;
+    XLSX.writeFile(book, `attendance-report${suffix}-${isoToday()}.xlsx`);
   }
  
   function init() {
