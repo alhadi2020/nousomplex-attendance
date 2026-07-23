@@ -5,7 +5,7 @@
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const content = $("#page-content");
-  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], holidays: [] };
+  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [] };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
   const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
@@ -63,16 +63,10 @@
     if (teachersTab) {
       teachersTab.style.display = admin ? "" : "none";
     }
-    const holidaysTab = document.querySelector('[data-page="holidays"]');
-    if (holidaysTab) {
-      holidaysTab.style.display = admin ? "" : "none";
-    }
     const adminToolsTab = document.querySelector('[data-page="admin-tools"]');
     if (adminToolsTab) {
       adminToolsTab.style.display = admin ? "" : "none";
     }
-    // Show sidebar toggle for all users
-    document.getElementById('sidebar-toggle').classList.add('visible');
   }
 
   // --- API Helper ---
@@ -206,6 +200,46 @@
     }
   }
 
+  // --- Reset Password (after clicking email link) ---
+  async function resetPassword() {
+    const password = $("#reset-password").value;
+    const confirm = $("#reset-password-confirm").value;
+    const messageEl = $("#reset-message");
+    
+    if (!password || password.length < 8) {
+      messageEl.textContent = "Password must be at least 8 characters.";
+      return;
+    }
+    
+    if (password !== confirm) {
+      messageEl.textContent = "Passwords do not match.";
+      return;
+    }
+    
+    messageEl.textContent = "";
+    showLoadingScreen('Updating password...');
+    
+    try {
+      const { error } = await state.db.auth.updateUser({ password });
+      if (error) throw error;
+      
+      hideLoadingScreen();
+      $("#reset-modal").classList.remove("show");
+      flash("Password updated successfully. Please sign in with your new password.");
+      // Clear the modal fields
+      $("#reset-password").value = "";
+      $("#reset-password-confirm").value = "";
+      $("#reset-message").textContent = "";
+      
+      // Sign out and show login
+      await state.db.auth.signOut();
+      showAuth();
+    } catch (e) {
+      hideLoadingScreen();
+      messageEl.textContent = e.message;
+    }
+  }
+
   // --- Navigation ---
   async function navigate(page) {
     state.page = page; 
@@ -215,7 +249,6 @@
       attendance:"Mark attendance", 
       students:"Students", 
       classes:"Classes", 
-      holidays:"Holidays",
       teachers:"Teachers", 
       reports:"Reports & exports",
       "admin-tools":"Admin Tools"
@@ -229,7 +262,6 @@
         attendance, 
         students, 
         classes, 
-        holidays,
         teachers, 
         reports,
         "admin-tools": adminTools
@@ -291,15 +323,6 @@
       return flash("Choose a class and date.", true);
     }
     
-    // Check if date is a holiday
-    const isHoliday = await checkHoliday(classId, date);
-    if (isHoliday) {
-      flash("This date is marked as a holiday. No attendance needed.", true);
-      $("#roster").innerHTML = `<div class="empty">📅 This date is a holiday. No attendance needed.</div>`;
-      $("#save-attendance").disabled = true;
-      return;
-    }
-    
     const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
     const session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
@@ -322,13 +345,6 @@
     
     if (!classId || !date) return;
     
-    // Check if date is a holiday
-    const isHoliday = await checkHoliday(classId, date);
-    if (isHoliday) {
-      flash("This date is a holiday. Cannot save attendance.", true);
-      return;
-    }
-    
     try {
       let session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
       if (!session) {
@@ -346,22 +362,6 @@
       flash("Attendance saved successfully.");
     } catch (e) { 
       flash(e.message, true); 
-    }
-  }
-
-  // --- Check Holiday ---
-  async function checkHoliday(classId, date) {
-    try {
-      let query = state.db.from("holidays").select("id").eq("date", date);
-      if (classId) {
-        query = query.eq("class_id", classId);
-      } else {
-        query = query.is("class_id", null);
-      }
-      const result = await api(query.maybeSingle());
-      return !!result;
-    } catch {
-      return false;
     }
   }
 
@@ -536,80 +536,6 @@
       classes(); 
     } catch (err) { 
       flash(/foreign key|violat/i.test(err.message) ? "This class still has students assigned and cannot be deleted." : err.message, true); 
-    }
-  }
-
-  // --- Holidays Page (Admin Only) ---
-  async function holidays() {
-    if (!isAdmin()) return navigate("dashboard");
-    setTemplate("#holidays-template");
-    await getClasses();
-    
-    // Populate class dropdown
-    $("#holiday-class").innerHTML = `<option value="">All Classes</option>` + 
-      state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
-    
-    // Set default date to today
-    $("#holiday-date").value = isoToday();
-    
-    // Add holiday button
-    $("#add-holiday").onclick = addHoliday;
-    
-    // Load existing holidays
-    await loadHolidays();
-    applyRoleVisibility();
-  }
-
-  async function loadHolidays() {
-    try {
-      const holidays = await api(state.db.from("holidays").select("id,class_id,date,reason,classes(name,section)").order("date"));
-      state.holidays = holidays;
-      
-      const list = $("#holidays-list");
-      if (holidays.length === 0) {
-        list.innerHTML = empty("No holidays set.");
-        return;
-      }
-      
-      list.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Class</th><th>Reason</th><th>Actions</th></tr></thead><tbody>${holidays.map(h => `<tr data-id="${h.id}"><td>${esc(h.date)}</td><td>${h.classes ? esc(h.classes.name) + (h.classes.section ? " — " + esc(h.classes.section) : "") : "All Classes"}</td><td>${esc(h.reason || "—")}</td><td><button class="text-button danger remove-holiday" data-id="${h.id}" style="color:#ef4444;">Remove</button></td></tr>`).join("")}</tbody></table></div>`;
-      
-      // Add remove handlers
-      $$(".remove-holiday").forEach(btn => {
-        btn.onclick = () => removeHoliday(btn.dataset.id);
-      });
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function addHoliday() {
-    const classId = $("#holiday-class").value || null;
-    const date = $("#holiday-date").value;
-    const reason = $("#holiday-reason").value.trim() || "Holiday";
-    
-    if (!date) {
-      flash("Please select a date.", true);
-      return;
-    }
-    
-    try {
-      await api(state.db.from("holidays").insert({ class_id: classId, date, reason }));
-      flash("Holiday added successfully.");
-      $("#holiday-reason").value = "";
-      await loadHolidays();
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function removeHoliday(id) {
-    if (!confirm("Remove this holiday?")) return;
-    try {
-      await api(state.db.from("holidays").delete().eq("id", id));
-      flash("Holiday removed.");
-      await loadHolidays();
-    } catch (err) {
-      flash(err.message, true);
     }
   }
 
@@ -795,7 +721,6 @@
       return;
     }
     
-    // Confirmation
     let confirmMsg = `Are you sure you want to delete all attendance records from ${from} to ${to}?`;
     if (classId) {
       const cls = state.classes.find(c => c.id === classId);
@@ -810,7 +735,6 @@
     if (!confirm(confirmMsg)) return;
     
     try {
-      // First, find all sessions in the date range
       let query = state.db.from("attendance_sessions").select("id").gte("attendance_date", from).lte("attendance_date", to);
       if (classId) query = query.eq("class_id", classId);
       const sessions = await api(query);
@@ -821,12 +745,10 @@
         return;
       }
       
-      // Delete records
       let recordsQuery = state.db.from("attendance_records").delete().in("session_id", sessionIds);
       if (studentId) recordsQuery = recordsQuery.eq("student_id", studentId);
       await api(recordsQuery);
       
-      // Delete sessions (optional - this removes empty sessions too)
       await api(state.db.from("attendance_sessions").delete().in("id", sessionIds));
       
       flash(`Successfully cleared ${sessionIds.length} session(s) of attendance data.`);
@@ -854,18 +776,49 @@
       showAuth(); 
     };
     
+    // Reset password modal
+    $("#reset-submit").onclick = resetPassword;
+    $("#reset-cancel").onclick = () => {
+      $("#reset-modal").classList.remove("show");
+      $("#reset-password").value = "";
+      $("#reset-password-confirm").value = "";
+      $("#reset-message").textContent = "";
+    };
+    
     // Navigation
     $("#nav").onclick = e => { const button = e.target.closest("button[data-page]"); if (button) navigate(button.dataset.page); };
     
-    // Sidebar toggle
+    // Sidebar toggle - mobile only
     $("#menu-toggle").onclick = () => $(".sidebar").classList.toggle("open");
     $("#sidebar-toggle").onclick = () => {
       const sidebar = $("#sidebar");
       sidebar.classList.toggle("hidden");
-      // Update button text
-      const btn = $("#sidebar-toggle");
-      btn.textContent = sidebar.classList.contains("hidden") ? "☰ Show" : "☰ Hide";
     };
+    
+    // Check if user came from password reset email
+    const params = new URLSearchParams(window.location.search);
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const type = params.get('type');
+    
+    if (type === 'recovery' && accessToken) {
+      // User clicked password reset link - show reset modal
+      showLoadingScreen('Verifying reset link...');
+      
+      // Set the session with the recovery token
+      state.db.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      }).then(() => {
+        hideLoadingScreen();
+        $("#reset-modal").classList.add("show");
+        // Clean URL
+        window.history.replaceState({}, '', '/nousomplex-attendance/');
+      }).catch(() => {
+        hideLoadingScreen();
+        flash("Invalid or expired reset link. Please try again.", true);
+      });
+    }
     
     if (configured) {
       loadSession();
