@@ -1,299 +1,879 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nous Complex Attendance Portal</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net">
-  <link rel="stylesheet" href="styles.css">
-  <style>
-    /* Loading spinner styles */
-    #loading-screen {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: #1a1a2e;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      color: white;
-      font-family: Arial, sans-serif;
+/* Nousomplex Attendance Portal — Complete with all features */
+(() => {
+  const cfg = window.APP_CONFIG || {};
+  const configured = cfg.SUPABASE_URL?.startsWith("https://") && !cfg.SUPABASE_ANON_KEY?.startsWith("PASTE_");
+  const $ = (s, root = document) => root.querySelector(s);
+  const $$ = (s, root = document) => [...root.querySelectorAll(s)];
+  const content = $("#page-content");
+  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], holidays: [] };
+  const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const isoToday = () => new Date().toISOString().slice(0, 10);
+  const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
+  const flash = (message, error = false) => { const el = $("#flash"); el.textContent = message; el.className = `flash ${error ? "error" : ""}`; el.style.display = "block"; setTimeout(() => el.style.display = "none", 4500); };
+  const setTemplate = id => { content.replaceChildren($(id).content.cloneNode(true)); };
+  const empty = text => `<div class="empty">${esc(text)}</div>`;
+  const isAdmin = () => state.profile?.role === "admin";
+  const ensureConfigured = () => { if (!configured) { $("#auth-message").textContent = "Add your Supabase Project URL and anon key to config.js before signing in."; return false; } return true; };
+ 
+  // --- Loading Screen Controls ---
+  function hideLoadingScreen() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.style.display = 'none';
     }
-    #loading-screen .spinner {
-      width: 50px;
-      height: 50px;
-      border: 4px solid rgba(255,255,255,0.1);
-      border-top: 4px solid #4f46e5;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 20px;
+  }
+
+  function showLoadingScreen(message = 'Loading attendance portal...') {
+    const loadingScreen = document.getElementById('loading-screen');
+    const messageEl = document.getElementById('loading-message');
+    if (loadingScreen) {
+      loadingScreen.style.display = 'flex';
     }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    if (messageEl) {
+      messageEl.textContent = message;
     }
-    #loading-screen .logo-text {
-      font-size: 24px;
-      font-weight: bold;
-      color: #4f46e5;
+  }
+
+  // --- Cache Management ---
+  let cachedClasses = null;
+  
+  async function getClasses() {
+    if (cachedClasses) {
+      state.classes = cachedClasses;
+      return cachedClasses;
     }
-    #loading-screen .sub-text {
-      color: rgba(255,255,255,0.5);
-      margin-top: 10px;
-      font-size: 14px;
+    state.classes = await api(state.db.from("classes").select("id,name,section,academic_year,teacher_id,teachers(name)").order("name"));
+    cachedClasses = state.classes;
+    return state.classes;
+  }
+
+  function classOptions(selected = "", none = "Select a class", includeAll = false) { 
+    let html = includeAll ? `<option value="">${none}</option>` : `<option value="">${none}</option>`;
+    html += state.classes.map(c => `<option value="${c.id}" ${c.id === selected ? "selected" : ""}>${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
+    return html;
+  }
+
+  // --- Admin Visibility ---
+  function applyRoleVisibility() {
+    const admin = isAdmin();
+    document.querySelectorAll("[data-admin-only]").forEach(el => {
+      el.style.display = admin ? "" : "none";
+    });
+    const teachersTab = document.querySelector('[data-page="teachers"]');
+    if (teachersTab) {
+      teachersTab.style.display = admin ? "" : "none";
     }
-
-    /* Login screen styles - FIXED with readable colors */
-    .auth-card .portal-name {
-      font-size: 28px;
-      font-weight: bold;
-      color: #ffffff !important;
-      margin: 10px 0 5px 0;
-      letter-spacing: 1px;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    const holidaysTab = document.querySelector('[data-page="holidays"]');
+    if (holidaysTab) {
+      holidaysTab.style.display = admin ? "" : "none";
     }
-    .auth-card .portal-slogan {
-      color: rgba(255,255,255,0.8) !important;
-      font-size: 16px;
-      margin-bottom: 20px;
-      letter-spacing: 1px;
-      font-weight: 300;
+    const adminToolsTab = document.querySelector('[data-page="admin-tools"]');
+    if (adminToolsTab) {
+      adminToolsTab.style.display = admin ? "" : "none";
     }
+    // Show sidebar toggle for all users
+    document.getElementById('sidebar-toggle').classList.add('visible');
+  }
 
-    /* Make sure auth card text is visible */
-    .auth-card {
-      background: rgba(26, 26, 46, 0.95) !important;
-      padding: 40px;
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  // --- API Helper ---
+  async function api(run) { 
+    const { data, error } = await run; 
+    if (error) throw error; 
+    return data; 
+  }
+
+  // --- Session Management ---
+  async function loadSession() {
+    try {
+      showLoadingScreen('Checking session...');
+      
+      const { data: { session } } = await state.db.auth.getSession();
+      
+      if (!session) {
+        hideLoadingScreen();
+        return showAuth();
+      }
+      
+      state.user = session.user;
+      showLoadingScreen('Loading profile...');
+      
+      const [profile, teacher] = await Promise.all([
+        api(state.db.from("profiles").select("*").eq("id", state.user.id).single()),
+        api(state.db.from("teachers").select("*").eq("profile_id", state.user.id).maybeSingle())
+      ]);
+      
+      state.profile = profile;
+      state.teacher = teacher;
+      
+      showLoadingScreen('Loading dashboard...');
+      
+      const displayName = state.profile.full_name || state.profile.email;
+      $("#user-name").textContent = displayName;
+      $("#user-role").textContent = state.profile.role;
+      
+      $("#auth-screen").classList.add("hidden"); 
+      $("#app").classList.remove("hidden");
+      
+      applyRoleVisibility();
+      await navigate("dashboard");
+      hideLoadingScreen();
+      setTimeout(applyRoleVisibility, 200);
+      
+    } catch (error) {
+      console.error('Session loading error:', error);
+      hideLoadingScreen();
+      showAuth();
     }
-    .auth-card label {
-      color: rgba(255,255,255,0.8) !important;
+  }
+
+  function showAuth() { 
+    state.user = state.profile = state.teacher = null; 
+    $("#app").classList.add("hidden"); 
+    $("#auth-screen").classList.remove("hidden");
+    cachedClasses = null;
+    hideLoadingScreen();
+  }
+
+  // --- Authentication ---
+  async function signIn(event) {
+    event.preventDefault(); 
+    if (!ensureConfigured()) return;
+    
+    const email = $("#auth-email").value.trim();
+    const password = $("#auth-password").value;
+    
+    if (!email || !password) {
+      $("#auth-message").textContent = "Please enter both email and password.";
+      return;
     }
-    .auth-card input {
-      background: rgba(255,255,255,0.1) !important;
-      color: white !important;
-      border: 1px solid rgba(255,255,255,0.2) !important;
+    
+    showLoadingScreen('Signing in...');
+    
+    try { 
+      await api(state.db.auth.signInWithPassword({ email, password })); 
+      await loadSession(); 
+    } catch (e) { 
+      $("#auth-message").textContent = e.message; 
+      hideLoadingScreen();
     }
-    .auth-card input:focus {
-      border-color: #4f46e5 !important;
-      outline: none;
+  }
+
+  async function signUp() {
+    if (!ensureConfigured()) return;
+    const email = $("#auth-email").value.trim();
+    const password = $("#auth-password").value;
+    
+    if (!email || !password || password.length < 8) {
+      return $("#auth-message").textContent = "Enter an email and a password of at least 8 characters first.";
     }
-  </style>
-</head>
-<body>
-  <!-- Loading Screen -->
-  <div id="loading-screen">
-    <div class="spinner"></div>
-    <div class="logo-text">Nous Complex</div>
-    <div class="sub-text" id="loading-message">Loading attendance portal...</div>
-  </div>
+    
+    showLoadingScreen('Creating account...');
+    
+    try { 
+      await api(state.db.auth.signUp({ 
+        email, 
+        password, 
+        options: { data: { full_name: email.split("@")[0] } } 
+      })); 
+      $("#auth-message").textContent = "Account created. Check your email to confirm it, then ask an administrator to activate your teacher profile."; 
+      hideLoadingScreen();
+    } catch (e) { 
+      $("#auth-message").textContent = e.message; 
+      hideLoadingScreen();
+    }
+  }
 
-  <main id="auth-screen" class="auth-shell hidden">
-    <section class="auth-card">
-      <div style="text-align: center;">
-        <!-- Logo Image -->
-        <img src="nouscomplex.png" alt="Nous Complex" style="max-width: 200px; height: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;">
-        
-        <!-- Portal Name - FIXED with white color -->
-        <h1 class="portal-name">Nous Complex Attendance Portal</h1>
-        
-        <!-- Slogan Line - FIXED with visible color -->
-        <p class="portal-slogan">Secure Attendance System</p>
-      </div>
-      <form id="auth-form">
-        <label>Email
-          <input id="auth-email" type="email" required autocomplete="email">
-        </label>
-        <label>Password
-          <input id="auth-password" type="password" required minlength="8" autocomplete="current-password">
-        </label>
-        <button id="auth-submit" class="primary" type="submit">Sign in</button>
-      </form>
-      <button id="signup-button" class="text-button" type="button">New Teacher?</button>
-      <p id="auth-message" class="message"></p>
-    </section>
-  </main>
+  // --- Forgot Password ---
+  async function forgotPassword() {
+    const email = $("#auth-email").value.trim();
+    if (!email) {
+      $("#auth-message").textContent = "Please enter your email address first.";
+      return;
+    }
+    
+    showLoadingScreen('Sending reset email...');
+    
+    try {
+      const { error } = await state.db.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/nousomplex-attendance/'
+      });
+      if (error) throw error;
+      $("#auth-message").textContent = "Password reset email sent. Check your inbox.";
+      hideLoadingScreen();
+    } catch (e) {
+      $("#auth-message").textContent = e.message;
+      hideLoadingScreen();
+    }
+  }
 
-  <div id="app" class="app hidden">
-    <aside class="sidebar">
-      <div class="brand" style="display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px;">
-        <img src="nouscomplex.png" alt="Nous Complex Logo" style="height: 28px; width: 28px; object-fit: contain; flex-shrink: 0;">
-        <span style="font-size: 15px; font-weight: 600; color: white; white-space: nowrap;">Nous Complex</span>
-      </div>
-      <nav id="nav">
-        <button data-page="dashboard" class="active">Dashboard</button>
-        <button data-page="attendance">Mark Attendance</button>
-        <button data-page="students">Students</button>
-        <button data-page="classes">Classes</button>
-        <button data-page="teachers" data-admin-only>Teachers</button>
-        <button data-page="reports">Reports</button>
-      </nav>
-      <div class="sidebar-bottom">
-        <p id="user-name"></p>
-        <span id="user-role" class="role-badge"></span>
-        <button id="signout" class="text-button"> Sign Out </button>
-      </div>
-    </aside>
-    <section class="main">
-      <header>
-        <button id="menu-toggle" class="mobile-only" aria-label="Open menu">☰</button>
-        <div>
-          <h1 id="page-title">Dashboard</h1>
-          <p id="today"></p>
-        </div>
-      </header>
-      <div id="flash" class="flash"></div>
-      <div id="page-content"></div>
-    </section>
-  </div>
+  // --- Navigation ---
+  async function navigate(page) {
+    state.page = page; 
+    document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
+    $("#page-title").textContent = ({ 
+      dashboard:"Dashboard", 
+      attendance:"Mark attendance", 
+      students:"Students", 
+      classes:"Classes", 
+      holidays:"Holidays",
+      teachers:"Teachers", 
+      reports:"Reports & exports",
+      "admin-tools":"Admin Tools"
+    })[page];
+    $("#today").textContent = fmt.format(new Date()); 
+    $(".sidebar")?.classList.remove("open");
+    
+    try { 
+      await ({ 
+        dashboard, 
+        attendance, 
+        students, 
+        classes, 
+        holidays,
+        teachers, 
+        reports,
+        "admin-tools": adminTools
+      })[page](); 
+      setTimeout(applyRoleVisibility, 100);
+    } catch (e) { 
+      content.innerHTML = empty(e.message); 
+      flash(e.message, true); 
+    }
+  }
 
-  <template id="dashboard-template">
-    <div class="stats">
-      <article>
-        <span>Students</span>
-        <strong data-stat="students">0</strong>
-      </article>
-      <article>
-        <span>Classes</span>
-        <strong data-stat="classes">0</strong>
-      </article>
-      <article>
-        <span>Present Today</span>
-        <strong data-stat="present">0</strong>
-      </article>
-      <article>
-        <span>Attendance Today</span>
-        <strong data-stat="rate">0%</strong>
-      </article>
-    </div>
-    <section class="panel">
-      <div class="panel-heading">
-        <h2>Today's Attendance</h2>
-        <button class="primary" data-go="attendance">Mark Attendance</button>
-      </div>
-      <div id="today-table"></div>
-    </section>
-  </template>
+  // --- Dashboard ---
+  async function dashboard() {
+    setTemplate("#dashboard-template"); 
+    const day = isoToday();
+    
+    const [students, sessions] = await Promise.all([
+      api(state.db.from("students").select("id")),
+      api(state.db.from("attendance_sessions").select("id,classes(name,section)").eq("attendance_date", day))
+    ]);
+    
+    const ids = sessions.map(s => s.id); 
+    const records = ids.length ? await api(state.db.from("attendance_records").select("status,attendance_sessions(id,classes(name,section))").in("session_id", ids)) : [];
+    
+    const present = records.filter(r => r.status === "present").length;
+    const rate = records.length ? Math.round(present / records.length * 100) : 0;
+    
+    $("[data-stat='students']").textContent = students.length; 
+    $("[data-stat='classes']").textContent = state.classes.length; 
+    $("[data-stat='present']").textContent = present; 
+    $("[data-stat='rate']").textContent = `${rate}%`;
+    
+    const rows = sessions.map(s => { 
+      const rs = records.filter(r => r.attendance_sessions?.id === s.id); 
+      return `<tr><td>${esc(s.classes?.name)} ${esc(s.classes?.section || "")}</td><td>${rs.filter(r => r.status === "present").length}</td><td>${rs.filter(r => r.status === "absent").length}</td><td>${rs.filter(r => r.status === "leave").length}</td></tr>`; 
+    }).join("");
+    
+    $("#today-table").innerHTML = rows ? `<div class="table-wrap"><table><thead><tr><th>Class</th><th>Present</th><th>Absent</th><th>Leave</th></tr></thead><tbody>${rows}</tbody></table></div>` : empty("No attendance has been recorded today.");
+    $("[data-go='attendance']").onclick = () => navigate("attendance");
+    applyRoleVisibility();
+  }
 
-  <template id="attendance-template">
-    <section class="panel">
-      <div class="form-grid">
-        <label>Date
-          <input id="attendance-date" type="date">
-        </label>
-        <label>Class
-          <select id="attendance-class">
-            <option value="">Select A Class</option>
-          </select>
-        </label>
-      </div>
-      <div class="toolbar">
-        <button id="load-roster" class="secondary">Load Students</button>
-        <button id="save-attendance" class="primary" disabled>Save Attendance</button>
-      </div>
-      <div id="roster"></div>
-    </section>
-  </template>
+  // --- Attendance Page ---
+  async function attendance() {
+    setTemplate("#attendance-template"); 
+    await getClasses(); 
+    $("#attendance-date").value = isoToday(); 
+    $("#attendance-class").innerHTML = classOptions();
+    $("#load-roster").onclick = loadRoster; 
+    $("#save-attendance").onclick = saveAttendance;
+    applyRoleVisibility();
+  }
 
-  <template id="students-template">
-    <section class="panel">
-      <div class="panel-heading">
-        <h2>Student Register</h2>
-        <button class="primary" id="new-student" data-admin-only>Add Student</button>
-      </div>
-      <div class="form-grid" style="grid-template-columns:1fr">
-        <label>Filter By Class
-          <select id="students-class-filter"></select>
-        </label>
-      </div>
-      <div id="student-form" class="inline-form hidden"></div>
-      <div id="students-table"></div>
-    </section>
-  </template>
+  async function loadRoster() {
+    const classId = $("#attendance-class").value;
+    const date = $("#attendance-date").value;
+    
+    if (!classId || !date) {
+      return flash("Choose a class and date.", true);
+    }
+    
+    // Check if date is a holiday
+    const isHoliday = await checkHoliday(classId, date);
+    if (isHoliday) {
+      flash("This date is marked as a holiday. No attendance needed.", true);
+      $("#roster").innerHTML = `<div class="empty">📅 This date is a holiday. No attendance needed.</div>`;
+      $("#save-attendance").disabled = true;
+      return;
+    }
+    
+    const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
+    const session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
+    const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
+    const map = Object.fromEntries(existing.map(r => [r.student_id, r]));
+    
+    $("#roster").innerHTML = students.length ? 
+      `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${students.map(s => { 
+        const r = map[s.id] || { status:"present", remarks:"" }; 
+        return `<tr data-student="${s.id}"><td>${esc(s.roll_number)}</td><td>${esc(s.name)}</td><td><select class="status-select"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select></td><td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250"></td></tr>`; 
+      }).join("")}</tbody></table></div>` : 
+      empty("No active students exist in this class.");
+    
+    $("#save-attendance").disabled = !students.length;
+    applyRoleVisibility();
+  }
 
-  <template id="classes-template">
-    <section class="panel">
-      <div class="panel-heading">
-        <h2>Classes</h2>
-        <button class="primary" id="new-class" data-admin-only>Add class</button>
-      </div>
-      <div id="class-form" class="inline-form hidden"></div>
-      <div id="classes-table"></div>
-    </section>
-  </template>
+  async function saveAttendance() {
+    const classId = $("#attendance-class").value;
+    const date = $("#attendance-date").value;
+    
+    if (!classId || !date) return;
+    
+    // Check if date is a holiday
+    const isHoliday = await checkHoliday(classId, date);
+    if (isHoliday) {
+      flash("This date is a holiday. Cannot save attendance.", true);
+      return;
+    }
+    
+    try {
+      let session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
+      if (!session) {
+        session = await api(state.db.from("attendance_sessions").insert({ class_id:classId, attendance_date:date }).select("id").single());
+      }
+      
+      const records = [...document.querySelectorAll("#roster tbody tr")].map(row => ({ 
+        session_id:session.id, 
+        student_id:row.dataset.student, 
+        status:$(".status-select", row).value, 
+        remarks:$(".remarks", row).value.trim() || null 
+      }));
+      
+      await api(state.db.from("attendance_records").upsert(records, { onConflict:"session_id,student_id" })); 
+      flash("Attendance saved successfully.");
+    } catch (e) { 
+      flash(e.message, true); 
+    }
+  }
 
-  <template id="teachers-template">
-    <section class="panel">
-      <div class="panel-heading">
-        <h2>Teacher Registration</h2>
-      </div>
-      <p class="muted">A Teacher Creates An Account First. Select Account Below To Activate Their Staff Profile.</p>
-      <div id="teacher-form" class="inline-form"></div>
-      <div id="teachers-table"></div>
-    </section>
-  </template>
+  // --- Check Holiday ---
+  async function checkHoliday(classId, date) {
+    try {
+      let query = state.db.from("holidays").select("id").eq("date", date);
+      if (classId) {
+        query = query.eq("class_id", classId);
+      } else {
+        query = query.is("class_id", null);
+      }
+      const result = await api(query.maybeSingle());
+      return !!result;
+    } catch {
+      return false;
+    }
+  }
 
-  <template id="reports-template">
-    <section class="panel">
-      <div class="form-grid report-filters">
-        <label>From
-          <input id="report-from" type="date">
-        </label>
-        <label>To
-          <input id="report-to" type="date">
-        </label>
-        <label>Class
-          <select id="report-class">
-            <option value="">All Available Classes</option>
-          </select>
-        </label>
-        <label>Student
-          <select id="report-student">
-            <option value="">All Students</option>
-          </select>
-        </label>
-      </div>
-      <div class="form-grid" style="grid-template-columns:1fr">
-        <label>Show
-          <select id="report-view">
-            <option value="both">Summary + Detailed Records</option>
-            <option value="summary">Summary By Student Only</option>
-            <option value="detail">Detailed Records Only</option>
-          </select>
-        </label>
-      </div>
-      <div class="toolbar">
-        <button id="run-report" class="secondary">Run Report</button>
-        <button id="excel-export-both" class="primary export-only">Download Excel (Both)</button>
-        <button id="excel-export-summary" class="secondary export-only">Download Excel (Summary)</button>
-        <button id="excel-export-detail" class="secondary export-only">Download Excel (Detailed)</button>
-        <button id="pdf-export" class="secondary export-only">Save PDF</button>
-      </div>
-      <p id="export-restricted-note" class="muted hidden">Report Downloads Have Been Disabled For Your Account By The Administrator.</p>
-      <div id="report-summary" class="stats compact"></div>
-      <div id="summary-section">
-        <div class="panel-heading" style="margin-top:24px">
-          <h2>Summary By Student</h2>
-        </div>
-        <div id="student-summary-table"></div>
-      </div>
-      <div id="detail-section">
-        <div class="panel-heading" style="margin-top:24px">
-          <h2>Detailed Attendance Records</h2>
-        </div>
-        <div id="report-table"></div>
-      </div>
-    </section>
-  </template>
+  // --- Students Page ---
+  async function students() {
+    setTemplate("#students-template"); 
+    await getClasses(); 
+    const admin = isAdmin();
+    let rows = await api(state.db.from("students").select("id,name,roll_number,email,phone,class_id,active,classes(name,section)").order("roll_number"));
+    if (!admin) rows = rows.filter(s => s.active);
+    
+    $("#students-class-filter").innerHTML = classOptions("", "All classes");
+    
+    const renderTable = () => {
+      const filterClass = $("#students-class-filter").value;
+      const filtered = filterClass ? rows.filter(s => s.class_id === filterClass) : rows;
+      
+      $("#students-table").innerHTML = filtered.length ? 
+        `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Name</th><th>Class</th><th>Email</th><th>Phone</th>${admin ? "<th>Status</th><th>Actions</th>" : ""}</tr></thead><tbody>${filtered.map(s => `<tr data-id="${s.id}"><td>${esc(s.roll_number)}</td><td>${esc(s.name)}</td><td>${esc(s.classes?.name)} ${esc(s.classes?.section || "")}</td><td>${esc(s.email || "—")}</td><td>${esc(s.phone || "—")}</td>${admin ? `<td><span class="status ${s.active ? "present" : "absent"}">${s.active ? "Active" : "Inactive"}</span></td><td class="row-actions"><button class="text-button edit-student" type="button">Edit</button><button class="text-button toggle-student" type="button">${s.active ? "Disable" : "Enable"}</button><button class="text-button danger delete-student" type="button">Delete</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : 
+        empty("No students found.");
+      
+      if (admin) {
+        $$(".edit-student").forEach(btn => btn.onclick = () => showStudentForm(rows.find(r => r.id === btn.closest("tr").dataset.id)));
+        $$(".delete-student").forEach(btn => btn.onclick = () => deleteStudent(btn.closest("tr").dataset.id));
+        $$(".toggle-student").forEach(btn => btn.onclick = () => { 
+          const s = rows.find(r => r.id === btn.closest("tr").dataset.id); 
+          toggleStudentActive(s.id, s.active); 
+        });
+      }
+      applyRoleVisibility();
+    };
+    
+    renderTable();
+    $("#students-class-filter").onchange = renderTable;
+    if (admin) $("#new-student").onclick = () => showStudentForm();
+    applyRoleVisibility();
+  }
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
-</body>
-</html>
+  async function toggleStudentActive(id, currentActive) {
+    try { 
+      await api(state.db.from("students").update({ active: !currentActive }).eq("id", id)); 
+      flash(!currentActive ? "Student enabled — visible to teachers again." : "Student disabled — hidden from teachers and attendance marking."); 
+      students(); 
+    } catch (err) { 
+      flash(err.message, true); 
+    }
+  }
+
+  function showStudentForm(student = null) {
+    const form = $("#student-form"); 
+    form.classList.remove("hidden");
+    form.innerHTML = `<form id="student-create"><label>Name<input name="name" required value="${student ? esc(student.name) : ""}"></label><label>Roll no.<input name="roll" required value="${student ? esc(student.roll_number) : ""}"></label><label>Class<select name="class" required>${classOptions(student?.class_id || "", "Select class")}</select></label><label>Email<input name="email" type="email" value="${student ? esc(student.email || "") : ""}"></label><label>Phone<input name="phone" value="${student ? esc(student.phone || "") : ""}"></label><div class="toolbar"><button class="primary">${student ? "Save changes" : "Save student"}</button>${student ? `<button type="button" class="text-button" id="cancel-student">Cancel</button>` : ""}</div></form>`;
+    $("#student-create").onsubmit = e => student ? updateStudent(e, student.id) : createStudent(e);
+    if (student) $("#cancel-student").onclick = () => form.classList.add("hidden");
+    applyRoleVisibility();
+  }
+
+  async function createStudent(e) { 
+    e.preventDefault(); 
+    const f = new FormData(e.target); 
+    try { 
+      await api(state.db.from("students").insert({ 
+        name:f.get("name"), 
+        roll_number:f.get("roll"), 
+        class_id:f.get("class"), 
+        email:f.get("email") || null, 
+        phone:f.get("phone") || null 
+      })); 
+      flash("Student registered."); 
+      students(); 
+    } catch (err) { 
+      flash(err.message, true); 
+    } 
+  }
+
+  async function updateStudent(e, id) { 
+    e.preventDefault(); 
+    const f = new FormData(e.target); 
+    try { 
+      await api(state.db.from("students").update({ 
+        name:f.get("name"), 
+        roll_number:f.get("roll"), 
+        class_id:f.get("class"), 
+        email:f.get("email") || null, 
+        phone:f.get("phone") || null 
+      }).eq("id", id)); 
+      flash("Student updated."); 
+      students(); 
+    } catch (err) { 
+      flash(err.message, true); 
+    } 
+  }
+
+  async function deleteStudent(id) {
+    if (!confirm("Delete this student? This cannot be undone.")) return;
+    try { 
+      await api(state.db.from("students").delete().eq("id", id)); 
+      flash("Student deleted."); 
+      students(); 
+    } catch (err) { 
+      flash(/foreign key|violat/i.test(err.message) ? "This student has attendance history and cannot be deleted." : err.message, true); 
+    }
+  }
+
+  // --- Classes Page ---
+  async function classes() {
+    setTemplate("#classes-template"); 
+    await getClasses(); 
+    const admin = isAdmin();
+    
+    $("#classes-table").innerHTML = state.classes.length ? 
+      `<div class="table-wrap"><table><thead><tr><th>Class</th><th>Section</th><th>Academic year</th><th>Teacher</th>${admin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${state.classes.map(c => `<tr data-id="${c.id}"><td>${esc(c.name)}</td><td>${esc(c.section || "—")}</td><td>${esc(c.academic_year)}</td><td>${esc(c.teachers?.name || "Unassigned")}</td>${admin ? `<td class="row-actions"><button class="text-button edit-class" type="button">Edit</button><button class="text-button danger delete-class" type="button">Delete</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : 
+      empty("No classes found.");
+    
+    if (admin) {
+      $("#new-class").onclick = () => showClassForm();
+      $$(".edit-class").forEach(btn => btn.onclick = () => showClassForm(state.classes.find(c => c.id === btn.closest("tr").dataset.id)));
+      $$(".delete-class").forEach(btn => btn.onclick = () => deleteClass(btn.closest("tr").dataset.id));
+    }
+    applyRoleVisibility();
+  }
+
+  async function showClassForm(cls = null) {
+    const teachers = await api(state.db.from("teachers").select("id,name").order("name"));
+    const form = $("#class-form"); 
+    form.classList.remove("hidden");
+    form.innerHTML = `<form id="class-create"><label>Class name<input name="name" placeholder="Grade 8" required value="${cls ? esc(cls.name) : ""}"></label><label>Section<input name="section" value="${cls ? esc(cls.section || "") : "A"}"></label><label>Academic year<input name="year" required value="${cls ? esc(cls.academic_year) : new Date().getFullYear()}"></label><label>Teacher<select name="teacher"><option value="">Unassigned</option>${teachers.map(t => `<option value="${t.id}" ${cls?.teacher_id === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label><div class="toolbar"><button class="primary">${cls ? "Save changes" : "Save class"}</button>${cls ? `<button type="button" class="text-button" id="cancel-class">Cancel</button>` : ""}</div></form>`;
+    $("#class-create").onsubmit = e => cls ? updateClass(e, cls.id) : createClass(e);
+    if (cls) $("#cancel-class").onclick = () => form.classList.add("hidden");
+    applyRoleVisibility();
+  }
+
+  async function createClass(e) { 
+    e.preventDefault(); 
+    const f = new FormData(e.target); 
+    try { 
+      await api(state.db.from("classes").insert({ 
+        name:f.get("name"), 
+        section:f.get("section"), 
+        academic_year:f.get("year"), 
+        teacher_id:f.get("teacher") || null 
+      })); 
+      flash("Class created."); 
+      classes(); 
+    } catch (err) { 
+      flash(err.message, true); 
+    } 
+  }
+
+  async function updateClass(e, id) { 
+    e.preventDefault(); 
+    const f = new FormData(e.target); 
+    try { 
+      await api(state.db.from("classes").update({ 
+        name:f.get("name"), 
+        section:f.get("section"), 
+        academic_year:f.get("year"), 
+        teacher_id:f.get("teacher") || null 
+      }).eq("id", id)); 
+      flash("Class updated."); 
+      classes(); 
+    } catch (err) { 
+      flash(err.message, true); 
+    } 
+  }
+
+  async function deleteClass(id) {
+    if (!confirm("Delete this class? This cannot be undone.")) return;
+    try { 
+      await api(state.db.from("classes").delete().eq("id", id)); 
+      flash("Class deleted."); 
+      classes(); 
+    } catch (err) { 
+      flash(/foreign key|violat/i.test(err.message) ? "This class still has students assigned and cannot be deleted." : err.message, true); 
+    }
+  }
+
+  // --- Holidays Page (Admin Only) ---
+  async function holidays() {
+    if (!isAdmin()) return navigate("dashboard");
+    setTemplate("#holidays-template");
+    await getClasses();
+    
+    // Populate class dropdown
+    $("#holiday-class").innerHTML = `<option value="">All Classes</option>` + 
+      state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
+    
+    // Set default date to today
+    $("#holiday-date").value = isoToday();
+    
+    // Add holiday button
+    $("#add-holiday").onclick = addHoliday;
+    
+    // Load existing holidays
+    await loadHolidays();
+    applyRoleVisibility();
+  }
+
+  async function loadHolidays() {
+    try {
+      const holidays = await api(state.db.from("holidays").select("id,class_id,date,reason,classes(name,section)").order("date"));
+      state.holidays = holidays;
+      
+      const list = $("#holidays-list");
+      if (holidays.length === 0) {
+        list.innerHTML = empty("No holidays set.");
+        return;
+      }
+      
+      list.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Class</th><th>Reason</th><th>Actions</th></tr></thead><tbody>${holidays.map(h => `<tr data-id="${h.id}"><td>${esc(h.date)}</td><td>${h.classes ? esc(h.classes.name) + (h.classes.section ? " — " + esc(h.classes.section) : "") : "All Classes"}</td><td>${esc(h.reason || "—")}</td><td><button class="text-button danger remove-holiday" data-id="${h.id}" style="color:#ef4444;">Remove</button></td></tr>`).join("")}</tbody></table></div>`;
+      
+      // Add remove handlers
+      $$(".remove-holiday").forEach(btn => {
+        btn.onclick = () => removeHoliday(btn.dataset.id);
+      });
+    } catch (err) {
+      flash(err.message, true);
+    }
+  }
+
+  async function addHoliday() {
+    const classId = $("#holiday-class").value || null;
+    const date = $("#holiday-date").value;
+    const reason = $("#holiday-reason").value.trim() || "Holiday";
+    
+    if (!date) {
+      flash("Please select a date.", true);
+      return;
+    }
+    
+    try {
+      await api(state.db.from("holidays").insert({ class_id: classId, date, reason }));
+      flash("Holiday added successfully.");
+      $("#holiday-reason").value = "";
+      await loadHolidays();
+    } catch (err) {
+      flash(err.message, true);
+    }
+  }
+
+  async function removeHoliday(id) {
+    if (!confirm("Remove this holiday?")) return;
+    try {
+      await api(state.db.from("holidays").delete().eq("id", id));
+      flash("Holiday removed.");
+      await loadHolidays();
+    } catch (err) {
+      flash(err.message, true);
+    }
+  }
+
+  // --- Teachers Page ---
+  async function teachers() {
+    if (!isAdmin()) return navigate("dashboard"); 
+    setTemplate("#teachers-template");
+    const [profiles, registered] = await Promise.all([
+      api(state.db.from("profiles").select("id,full_name,email").eq("role", "teacher").order("email")),
+      api(state.db.from("teachers").select("id,profile_id,name,phone,can_export,profiles(email)").order("name"))
+    ]);
+    const used = new Set(registered.map(t => t.profile_id)); 
+    const available = profiles.filter(p => !used.has(p.id));
+    showTeacherActivateForm(available);
+    $("#teachers-table").innerHTML = registered.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Report downloads</th><th>Actions</th></tr></thead><tbody>${registered.map(t => `<tr data-id="${t.id}"><td>${esc(t.name)}</td><td>${esc(t.profiles?.email)}</td><td>${esc(t.phone || "—")}</td><td><span class="status ${t.can_export !== false ? "present" : "absent"}">${t.can_export !== false ? "Allowed" : "Restricted"}</span></td><td class="row-actions"><button class="text-button edit-teacher" type="button">Edit</button><button class="text-button danger delete-teacher" type="button">Delete</button></td></tr>`).join("")}</tbody></table></div>` : empty("No teacher profiles activated.");
+    $$(".edit-teacher").forEach(btn => btn.onclick = () => showTeacherEditForm(registered.find(t => t.id === btn.closest("tr").dataset.id)));
+    $$(".delete-teacher").forEach(btn => btn.onclick = () => deleteTeacher(btn.closest("tr").dataset.id));
+    applyRoleVisibility();
+  }
+
+  function showTeacherActivateForm(available) {
+    $("#teacher-form").innerHTML = available.length ? `<form id="teacher-create"><label>Account<select name="profile" required><option value="">Select signed-up teacher</option>${available.map(p => `<option value="${p.id}">${esc(p.full_name || p.email)} (${esc(p.email)})</option>`).join("")}</select></label><label>Display name<input name="name" required></label><label>Phone<input name="phone"></label><label>Report downloads<select name="can_export"><option value="true" selected>Allowed</option><option value="false">Restricted</option></select></label><button class="primary">Activate teacher</button></form>` : `<p class="muted">No unassigned teacher accounts. Ask the teacher to sign up first.</p>`;
+    const form = $("#teacher-create"); if (form) form.onsubmit = async e => { e.preventDefault(); const f = new FormData(form); try { await api(state.db.from("teachers").insert({ profile_id:f.get("profile"), name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" })); flash("Teacher profile activated."); teachers(); } catch (err) { flash(err.message, true); } };
+    applyRoleVisibility();
+  }
+
+  function showTeacherEditForm(teacher) {
+    $("#teacher-form").innerHTML = `<form id="teacher-edit"><label>Display name<input name="name" required value="${esc(teacher.name)}"></label><label>Phone<input name="phone" value="${esc(teacher.phone || "")}"></label><label>Report downloads<select name="can_export"><option value="true" ${teacher.can_export !== false ? "selected" : ""}>Allowed</option><option value="false" ${teacher.can_export === false ? "selected" : ""}>Restricted</option></select></label><div class="toolbar"><button class="primary">Save changes</button><button type="button" class="text-button" id="cancel-teacher">Cancel</button></div></form>`;
+    $("#teacher-edit").onsubmit = e => updateTeacher(e, teacher.id);
+    $("#cancel-teacher").onclick = () => teachers();
+    applyRoleVisibility();
+  }
+
+  async function updateTeacher(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("teachers").update({ name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" }).eq("id", id)); flash("Teacher updated."); teachers(); } catch (err) { flash(err.message, true); } }
+
+  async function deleteTeacher(id) {
+    if (!confirm("Remove this teacher profile? Their sign-in account stays intact and can be reactivated later, but they'll be unassigned from any classes.")) return;
+    try { await api(state.db.from("teachers").delete().eq("id", id)); flash("Teacher profile removed."); teachers(); }
+    catch (err) { flash(err.message, true); }
+  }
+
+  // --- Reports Page ---
+  async function reports() {
+    setTemplate("#reports-template"); 
+    await getClasses(); 
+    const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1); 
+    $("#report-from").value = start.toISOString().slice(0, 10); 
+    $("#report-to").value = isoToday(); 
+    $("#report-class").innerHTML = classOptions("", "All available classes", true);
+    $("#report-class").onchange = async () => { 
+      const classId = $("#report-class").value; 
+      const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("roll_number")); 
+      $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("")}`; 
+    };
+    const allowExport = isAdmin() || state.teacher?.can_export !== false;
+    $$(".export-only").forEach(el => el.classList.toggle("hidden", !allowExport));
+    $("#export-restricted-note")?.classList.toggle("hidden", allowExport);
+    $("#run-report").onclick = runReport; 
+    $("#excel-export-both").onclick = () => exportExcel("both"); 
+    $("#excel-export-summary").onclick = () => exportExcel("summary"); 
+    $("#excel-export-detail").onclick = () => exportExcel("detail"); 
+    $("#pdf-export").onclick = () => { if (allowExport) window.print(); }; 
+    $("#report-view").onchange = applyReportView; 
+    await runReport();
+    // Set default view to summary
+    $("#report-view").value = "summary";
+    applyReportView();
+  }
+
+  async function runReport() {
+    const from = $("#report-from").value, to = $("#report-to").value, classId = $("#report-class").value, studentId = $("#report-student").value; 
+    if (!from || !to || from > to) return flash("Choose a valid date range.", true);
+    let q = state.db.from("attendance_sessions").select("id,attendance_date,class_id,classes(name,section)").gte("attendance_date", from).lte("attendance_date", to).order("attendance_date"); 
+    if (classId) q = q.eq("class_id", classId); 
+    const sessions = await api(q); 
+    const ids = sessions.map(s => s.id);
+    let records = ids.length ? await api(state.db.from("attendance_records").select("id,session_id,student_id,status,remarks,students(name,roll_number)").in("session_id", ids)) : []; 
+    if (studentId) records = records.filter(r => r.student_id === studentId);
+    const bySession = Object.fromEntries(sessions.map(s => [s.id, s])); 
+    state.reportRows = records.map(r => ({ id:r.id, date:bySession[r.session_id].attendance_date, class:`${bySession[r.session_id].classes?.name || ""} ${bySession[r.session_id].classes?.section || ""}`.trim(), student:r.students?.name || "", roll:r.students?.roll_number || "", status:r.status, remarks:r.remarks || "" }));
+    state.reportRows.sort((a, b) => (a.roll || "").localeCompare(b.roll || "", undefined, { numeric:true }));
+    const present = state.reportRows.filter(r => r.status === "present").length, absent = state.reportRows.filter(r => r.status === "absent").length, leave = state.reportRows.filter(r => r.status === "leave").length; 
+    $("#report-summary").innerHTML = `<article><span>Present</span><strong>${present}</strong></article><article><span>Absent</span><strong>${absent}</strong></article><article><span>Leave</span><strong>${leave}</strong></article>`;
+    const admin = isAdmin();
+    $("#report-table").innerHTML = state.reportRows.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td>${admin ? `<select class="status-edit" data-id="${r.id}"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select>` : `<span class="status ${r.status}">${esc(r.status)}</span>`}</td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
+    if (admin) $$(".status-edit").forEach(sel => sel.onchange = () => updateRecordStatus(sel.dataset.id, sel.value));
+    renderStudentSummary();
+    applyReportView();
+  }
+
+  async function updateRecordStatus(id, status) {
+    try { await api(state.db.from("attendance_records").update({ status }).eq("id", id)); flash("Attendance status updated."); await runReport(); }
+    catch (err) { flash(err.message, true); }
+  }
+
+  function applyReportView() {
+    const view = $("#report-view")?.value || "summary";
+    $("#summary-section").style.display = view === "detail" ? "none" : "";
+    $("#detail-section").style.display = view === "summary" ? "none" : "";
+  }
+
+  function computeStudentSummary() {
+    const map = new Map();
+    state.reportRows.forEach(r => {
+      const key = r.roll || r.student;
+      if (!map.has(key)) map.set(key, { student:r.student, roll:r.roll, present:0, absent:0, leave:0 });
+      const entry = map.get(key); entry[r.status] = (entry[r.status] || 0) + 1;
+    });
+    return [...map.values()].map(e => { const total = e.present + e.absent + e.leave; return { ...e, total, pct: total ? Math.round((e.present / total) * 100) : 0 }; }).sort((a, b) => (a.roll || "").localeCompare(b.roll || "", undefined, { numeric:true }));
+  }
+
+  function renderStudentSummary() {
+    const rows = computeStudentSummary();
+    const el = $("#student-summary-table"); if (!el) return;
+    el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th><th>Attendance %</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
+  }
+
+  function detailSheetData() { return XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ "Roll No.":r.roll, Student:r.student, Date:r.date, Class:r.class, Status:r.status, Remarks:r.remarks }))); }
+  function summarySheetData() { return XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ "Roll No.":r.roll, Student:r.student, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total, "Attendance %":r.pct }))); }
+
+  function exportExcel(mode = "both") {
+    if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
+    if (!(isAdmin() || state.teacher?.can_export !== false)) return flash("Report downloads are disabled for your account.", true);
+    const book = XLSX.utils.book_new();
+    if (mode === "both" || mode === "detail") XLSX.utils.book_append_sheet(book, detailSheetData(), "Attendance");
+    if (mode === "both" || mode === "summary") XLSX.utils.book_append_sheet(book, summarySheetData(), "Summary by student");
+    const suffix = mode === "both" ? "" : `-${mode}`;
+    XLSX.writeFile(book, `attendance-report${suffix}-${isoToday()}.xlsx`);
+  }
+
+  // --- Admin Tools Page ---
+  async function adminTools() {
+    if (!isAdmin()) return navigate("dashboard");
+    setTemplate("#admin-tools-template");
+    await getClasses();
+    
+    // Populate class dropdown
+    $("#clear-class").innerHTML = `<option value="">All Classes</option>` + 
+      state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
+    
+    // Populate student dropdown (initially empty)
+    $("#clear-class").onchange = async () => {
+      const classId = $("#clear-class").value;
+      if (classId) {
+        const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).order("roll_number"));
+        $("#clear-student").innerHTML = `<option value="">All Students</option>` + 
+          students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("");
+      } else {
+        $("#clear-student").innerHTML = `<option value="">All Students</option>`;
+      }
+    };
+    
+    // Set default dates
+    const now = new Date();
+    const monthAgo = new Date(now);
+    monthAgo.setMonth(monthAgo.getMonth() - 1);
+    $("#clear-from").value = monthAgo.toISOString().slice(0, 10);
+    $("#clear-to").value = isoToday();
+    
+    // Clear button
+    $("#clear-attendance").onclick = clearAttendanceData;
+    applyRoleVisibility();
+  }
+
+  async function clearAttendanceData() {
+    if (!isAdmin()) {
+      flash("Only admins can clear attendance data.", true);
+      return;
+    }
+    
+    const from = $("#clear-from").value;
+    const to = $("#clear-to").value;
+    const classId = $("#clear-class").value;
+    const studentId = $("#clear-student").value;
+    
+    if (!from || !to) {
+      flash("Please select both from and to dates.", true);
+      return;
+    }
+    
+    if (from > to) {
+      flash("From date must be before to date.", true);
+      return;
+    }
+    
+    // Confirmation
+    let confirmMsg = `Are you sure you want to delete all attendance records from ${from} to ${to}?`;
+    if (classId) {
+      const cls = state.classes.find(c => c.id === classId);
+      confirmMsg += `\nClass: ${cls ? cls.name + (cls.section ? " — " + cls.section : "") : "Selected"}`;
+    }
+    if (studentId) {
+      const student = await api(state.db.from("students").select("name,roll_number").eq("id", studentId).single());
+      confirmMsg += `\nStudent: ${student ? student.roll_number + " — " + student.name : "Selected"}`;
+    }
+    confirmMsg += "\n\nThis action CANNOT be undone!";
+    
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+      // First, find all sessions in the date range
+      let query = state.db.from("attendance_sessions").select("id").gte("attendance_date", from).lte("attendance_date", to);
+      if (classId) query = query.eq("class_id", classId);
+      const sessions = await api(query);
+      const sessionIds = sessions.map(s => s.id);
+      
+      if (sessionIds.length === 0) {
+        flash("No attendance records found in this date range.", true);
+        return;
+      }
+      
+      // Delete records
+      let recordsQuery = state.db.from("attendance_records").delete().in("session_id", sessionIds);
+      if (studentId) recordsQuery = recordsQuery.eq("student_id", studentId);
+      await api(recordsQuery);
+      
+      // Delete sessions (optional - this removes empty sessions too)
+      await api(state.db.from("attendance_sessions").delete().in("id", sessionIds));
+      
+      flash(`Successfully cleared ${sessionIds.length} session(s) of attendance data.`);
+      $("#clear-result").innerHTML = `<div style="color: green; padding: 10px; background: rgba(34,197,94,0.1); border-radius: 6px;">✅ ${sessionIds.length} session(s) cleared successfully.</div>`;
+    } catch (err) {
+      flash(err.message, true);
+      $("#clear-result").innerHTML = `<div style="color: #ef4444; padding: 10px; background: rgba(239,68,68,0.1); border-radius: 6px;">❌ Error: ${err.message}</div>`;
+    }
+  }
+
+  // --- Init ---
+  function init() {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.style.display = 'flex';
+    }
+    
+    if (configured) state.db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+    $("#auth-form").onsubmit = signIn; 
+    $("#signup-button").onclick = signUp;
+    $("#forgot-password-btn").onclick = forgotPassword;
+    $("#signout").onclick = async () => { 
+      await state.db.auth.signOut(); 
+      cachedClasses = null;
+      showAuth(); 
+    };
+    
+    // Navigation
+    $("#nav").onclick = e => { const button = e.target.closest("button[data-page]"); if (button) navigate(button.dataset.page); };
+    
+    // Sidebar toggle
+    $("#menu-toggle").onclick = () => $(".sidebar").classList.toggle("open");
+    $("#sidebar-toggle").onclick = () => {
+      const sidebar = $("#sidebar");
+      sidebar.classList.toggle("hidden");
+      // Update button text
+      const btn = $("#sidebar-toggle");
+      btn.textContent = sidebar.classList.contains("hidden") ? "☰ Show" : "☰ Hide";
+    };
+    
+    if (configured) {
+      loadSession();
+    } else {
+      hideLoadingScreen();
+      ensureConfigured();
+    }
+  }
+  
+  init();
+})();
