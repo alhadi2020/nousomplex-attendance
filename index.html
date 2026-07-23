@@ -177,27 +177,19 @@
       align-items: center;
       gap: 10px;
       padding: 15px;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .sidebar .brand img {
-      height: 32px;
-      width: 32px;
-      object-fit: contain;
-    }
-
-    .sidebar .brand span {
-      font-size: 16px;
-      font-weight: 600;
-      color: white;
-    }
-
-    .sidebar nav {
-      padding: 10px 0;
-    }
-
-    .sidebar nav button {
-      display: block;
+   <form id="auth-form" style="text-align: left;">
+  <label style="display: block; text-align: left;">Email
+    <input id="auth-email" type="email" required autocomplete="email" style="width: 100%;">
+  </label>
+  <label style="display: block; text-align: left;">Password
+    <input id="auth-password" type="password" required minlength="8" autocomplete="current-password" style="width: 100%;">
+  </label>
+  <button id="auth-submit" class="primary" type="submit" style="width: 100%;">Sign in</button>
+</form>
+<div class="auth-links" style="text-align: left; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px; flex-wrap: wrap;">
+  <button id="forgot-password-btn" class="text-button" type="button">Forgot Password?</button>
+  <button id="signup-button" class="text-button" type="button">New Teacher?</button>
+</div>
       width: 100%;
       text-align: left;
       padding: 12px 20px;
