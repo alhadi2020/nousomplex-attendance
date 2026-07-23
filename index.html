@@ -65,19 +65,38 @@
       width: 100%;
       border: 1px solid #e5e7eb;
     }
-    .auth-card .portal-name {
-      font-size: 28px;
-      font-weight: bold;
-      color: #1a1a2e !important;
-      margin: 10px 0 5px 0;
+    /* Professional two-line title */
+    .auth-card .brand-title {
+      text-align: center;
+      margin-bottom: 5px;
+    }
+    .auth-card .brand-title .company-name {
+      font-size: 32px;
+      font-weight: 700;
+      color: #1a1a2e;
       letter-spacing: 1px;
+      display: block;
+      line-height: 1.2;
+    }
+    .auth-card .brand-title .company-name .highlight {
+      color: #4f46e5;
+    }
+    .auth-card .brand-title .portal-subtitle {
+      font-size: 18px;
+      font-weight: 400;
+      color: #6b7280;
+      letter-spacing: 2px;
+      display: block;
+      margin-top: 2px;
     }
     .auth-card .portal-slogan {
-      color: #6b7280 !important;
-      font-size: 16px;
-      margin-bottom: 20px;
-      letter-spacing: 0.5px;
-      font-weight: 400;
+      color: #9ca3af !important;
+      font-size: 14px;
+      margin: 8px 0 20px 0;
+      letter-spacing: 3px;
+      font-weight: 300;
+      text-align: center;
+      text-transform: uppercase;
     }
     .auth-card label {
       color: #374151 !important;
@@ -143,55 +162,9 @@
       flex-wrap: wrap;
     }
 
-    /* Sidebar toggle button - ONLY on mobile - NO BACKGROUND */
+    /* Sidebar toggle - REMOVED completely */
     .sidebar-toggle {
-      position: fixed;
-      top: 12px;
-      left: 12px;
-      z-index: 1000;
-      background: transparent !important;
-      color: #4f46e5;
-      border: none;
-      width: 40px;
-      height: 40px;
-      cursor: pointer;
-      font-size: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      line-height: 1;
-      transition: all 0.3s ease;
-    }
-    .sidebar-toggle:hover {
-      transform: scale(1.1);
-    }
-    /* Three-line hamburger icon using CSS */
-    .sidebar-toggle .hamburger {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      width: 24px;
-      align-items: center;
-      justify-content: center;
-    }
-    .sidebar-toggle .hamburger span {
-      display: block;
-      width: 100%;
-      height: 3px;
-      background: #4f46e5;
-      border-radius: 3px;
-      transition: all 0.3s ease;
-    }
-    /* When sidebar is open, animate to X */
-    .sidebar-toggle.active .hamburger span:nth-child(1) {
-      transform: rotate(45deg) translate(5px, 5px);
-    }
-    .sidebar-toggle.active .hamburger span:nth-child(2) {
-      opacity: 0;
-    }
-    .sidebar-toggle.active .hamburger span:nth-child(3) {
-      transform: rotate(-45deg) translate(6px, -6px);
+      display: none !important;
     }
 
     /* Sidebar styles */
@@ -205,7 +178,7 @@
       transform: translateX(0);
     }
 
-    /* App layout - FIXED extra space */
+    /* App layout */
     #app {
       display: flex;
       min-height: 100vh;
@@ -221,12 +194,8 @@
       width: 100%;
     }
 
-    /* Mobile responsive */
+    /* Mobile responsive - NO HAMBURGER */
     @media (max-width: 768px) {
-      .sidebar-toggle {
-        display: flex !important;
-        background: transparent !important;
-      }
       .sidebar {
         position: fixed;
         top: 0;
@@ -248,7 +217,7 @@
       }
       .main {
         margin-left: 0 !important;
-        padding: 60px 15px 15px 15px !important;
+        padding: 15px !important;
         width: 100%;
         max-width: 100%;
         overflow-x: hidden;
@@ -257,20 +226,20 @@
         padding: 30px 20px;
         margin: 10px;
       }
-      .auth-card .portal-name {
-        font-size: 22px;
+      .auth-card .brand-title .company-name {
+        font-size: 26px;
       }
-      /* Hide the old menu toggle button */
+      .auth-card .brand-title .portal-subtitle {
+        font-size: 16px;
+      }
       #menu-toggle {
         display: none !important;
       }
-      /* Fix for app container */
       #app {
         width: 100%;
         max-width: 100%;
         overflow-x: hidden;
       }
-      /* Stats on mobile */
       .stats {
         grid-template-columns: 1fr 1fr !important;
         gap: 10px !important;
@@ -278,7 +247,6 @@
       .stats article {
         padding: 12px !important;
       }
-      /* Tables on mobile */
       .table-wrap {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -286,24 +254,12 @@
       .table-wrap table {
         min-width: 600px;
       }
-      /* Form grids on mobile */
       .form-grid {
         grid-template-columns: 1fr !important;
-      }
-      /* Hide sidebar toggle on login screen */
-      .auth-shell .sidebar-toggle,
-      .auth-shell ~ .sidebar-toggle {
-        display: none !important;
-      }
-      body.auth-page .sidebar-toggle {
-        display: none !important;
       }
     }
 
     @media (min-width: 769px) {
-      .sidebar-toggle {
-        display: none !important;
-      }
       .sidebar {
         transform: translateX(0) !important;
         position: relative;
@@ -330,10 +286,6 @@
         overflow-x: hidden;
       }
       #menu-toggle {
-        display: none !important;
-      }
-      .auth-shell .sidebar-toggle,
-      .auth-shell ~ .sidebar-toggle {
         display: none !important;
       }
     }
@@ -413,7 +365,7 @@
       color: #374151;
     }
 
-    /* Stats on desktop */
+    /* Stats */
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -435,6 +387,14 @@
     .stats article strong {
       font-size: 24px;
       color: #1a1a2e;
+    }
+
+    /* Logo image */
+    .auth-logo {
+      display: block;
+      max-width: 120px;
+      height: auto;
+      margin: 0 auto 15px auto;
     }
   </style>
 </head>
@@ -461,20 +421,15 @@
     </div>
   </div>
 
-  <!-- Sidebar Toggle Button (Mobile Only) - NO BACKGROUND -->
-  <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle menu">
-    <div class="hamburger">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-  </button>
-
   <main id="auth-screen" class="auth-shell">
     <section class="auth-card">
       <div style="text-align: center;">
-        <img src="nouscomplex.png" alt="Nous Complex" style="max-width: 180px; height: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;">
-        <h1 class="portal-name">Nous Complex Attendance Portal</h1>
+        <img src="nouscomplex.png" alt="Nous Complex" class="auth-logo">
+        <!-- Professional two-line title -->
+        <div class="brand-title">
+          <span class="company-name">Nous <span class="highlight">Complex</span></span>
+          <span class="portal-subtitle">Attendance Portal</span>
+        </div>
         <p class="portal-slogan">Secure Attendance System</p>
       </div>
       <form id="auth-form">
@@ -517,7 +472,6 @@
     </aside>
     <section class="main">
       <header>
-        <button id="menu-toggle" class="mobile-only" aria-label="Open menu">☰</button>
         <div>
           <h1 id="page-title">Dashboard</h1>
           <p id="today"></p>
