@@ -47,19 +47,41 @@
       font-size: 14px;
     }
 
-    /* Login screen styles */
+    /* Login screen styles - FIXED with readable colors */
     .auth-card .portal-name {
       font-size: 28px;
       font-weight: bold;
-      color: #ffffff;
+      color: #ffffff !important;
       margin: 10px 0 5px 0;
       letter-spacing: 1px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
     .auth-card .portal-slogan {
-      color: rgba(255,255,255,0.6);
-      font-size: 14px;
+      color: rgba(255,255,255,0.8) !important;
+      font-size: 16px;
       margin-bottom: 20px;
-      letter-spacing: 0.5px;
+      letter-spacing: 1px;
+      font-weight: 300;
+    }
+
+    /* Make sure auth card text is visible */
+    .auth-card {
+      background: rgba(26, 26, 46, 0.95) !important;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .auth-card label {
+      color: rgba(255,255,255,0.8) !important;
+    }
+    .auth-card input {
+      background: rgba(255,255,255,0.1) !important;
+      color: white !important;
+      border: 1px solid rgba(255,255,255,0.2) !important;
+    }
+    .auth-card input:focus {
+      border-color: #4f46e5 !important;
+      outline: none;
     }
   </style>
 </head>
@@ -68,7 +90,7 @@
   <div id="loading-screen">
     <div class="spinner"></div>
     <div class="logo-text">Nous Complex</div>
-    <div class="sub-text">Loading attendance portal...</div>
+    <div class="sub-text" id="loading-message">Loading attendance portal...</div>
   </div>
 
   <main id="auth-screen" class="auth-shell hidden">
@@ -77,10 +99,10 @@
         <!-- Logo Image -->
         <img src="nouscomplex.png" alt="Nous Complex" style="max-width: 200px; height: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;">
         
-        <!-- Portal Name -->
+        <!-- Portal Name - FIXED with white color -->
         <h1 class="portal-name">Nous Complex Attendance Portal</h1>
         
-        <!-- Slogan Line -->
+        <!-- Slogan Line - FIXED with visible color -->
         <p class="portal-slogan">Secure Attendance System</p>
       </div>
       <form id="auth-form">
@@ -210,7 +232,7 @@
       <div class="panel-heading">
         <h2>Teacher Registration</h2>
       </div>
-      <p class="muted">A Teacher creates an account first. Select account below to activate their staff profile.</p>
+      <p class="muted">A Teacher Creates An Account First. Select Account Below To Activate Their Staff Profile.</p>
       <div id="teacher-form" class="inline-form"></div>
       <div id="teachers-table"></div>
     </section>
@@ -239,9 +261,9 @@
       <div class="form-grid" style="grid-template-columns:1fr">
         <label>Show
           <select id="report-view">
-          <option value="summary">Summary by Student Only</option>
-          <option value="detail">Detailed Records Only</option>         
-          <option value="both">Summary + Detailed Records</option>
+            <option value="both">Summary + Detailed Records</option>
+            <option value="summary">Summary By Student Only</option>
+            <option value="detail">Detailed Records Only</option>
           </select>
         </label>
       </div>
@@ -252,7 +274,7 @@
         <button id="excel-export-detail" class="secondary export-only">Download Excel (Detailed)</button>
         <button id="pdf-export" class="secondary export-only">Save PDF</button>
       </div>
-      <p id="export-restricted-note" class="muted hidden">Report Downloads have been Disabled for your account ay the administrator.</p>
+      <p id="export-restricted-note" class="muted hidden">Report Downloads Have Been Disabled For Your Account By The Administrator.</p>
       <div id="report-summary" class="stats compact"></div>
       <div id="summary-section">
         <div class="panel-heading" style="margin-top:24px">
