@@ -47,7 +47,7 @@
       font-size: 14px;
     }
 
-    /* Login screen styles - FIXED with readable colors */
+    /* Login screen styles */
     .auth-card .portal-name {
       font-size: 28px;
       font-weight: bold;
@@ -63,8 +63,6 @@
       letter-spacing: 1px;
       font-weight: 300;
     }
-
-    /* Make sure auth card text is visible */
     .auth-card {
       background: rgba(26, 26, 46, 0.95) !important;
       padding: 40px;
@@ -83,6 +81,90 @@
       border-color: #4f46e5 !important;
       outline: none;
     }
+    .auth-links {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      gap: 10px;
+    }
+    .auth-links .text-button {
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.6);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 5px 0;
+      text-decoration: underline;
+    }
+    .auth-links .text-button:hover {
+      color: #4f46e5;
+    }
+
+    /* Sidebar toggle button */
+    .sidebar-toggle {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 18px;
+      display: none;
+    }
+    .sidebar.hidden {
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+    .sidebar:not(.hidden) {
+      transform: translateX(0);
+      transition: transform 0.3s ease;
+    }
+    .sidebar-toggle.visible {
+      display: block;
+    }
+
+    /* Admin panels */
+    .admin-panel {
+      background: rgba(79, 70, 229, 0.1);
+      border: 1px solid rgba(79, 70, 229, 0.3);
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 15px;
+    }
+    .admin-panel h3 {
+      color: #4f46e5;
+      margin-top: 0;
+      font-size: 16px;
+    }
+    .admin-panel .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+    }
+
+    /* Holiday tags */
+    .holiday-tag {
+      display: inline-block;
+      background: #ef4444;
+      color: white;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      margin: 2px;
+    }
+    .holiday-tag .remove-holiday {
+      cursor: pointer;
+      margin-left: 5px;
+      font-weight: bold;
+    }
+    .holiday-tag .remove-holiday:hover {
+      color: #fca5a5;
+    }
   </style>
 </head>
 <body>
@@ -93,16 +175,14 @@
     <div class="sub-text" id="loading-message">Loading attendance portal...</div>
   </div>
 
+  <!-- Sidebar Toggle Button -->
+  <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">☰</button>
+
   <main id="auth-screen" class="auth-shell hidden">
     <section class="auth-card">
       <div style="text-align: center;">
-        <!-- Logo Image -->
         <img src="nouscomplex.png" alt="Nous Complex" style="max-width: 200px; height: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;">
-        
-        <!-- Portal Name - FIXED with white color -->
         <h1 class="portal-name">Nous Complex Attendance Portal</h1>
-        
-        <!-- Slogan Line - FIXED with visible color -->
         <p class="portal-slogan">Secure Attendance System</p>
       </div>
       <form id="auth-form">
@@ -114,13 +194,16 @@
         </label>
         <button id="auth-submit" class="primary" type="submit">Sign in</button>
       </form>
-      <button id="signup-button" class="text-button" type="button">New Teacher?</button>
+      <div class="auth-links">
+        <button id="forgot-password-btn" class="text-button" type="button">Forgot Password?</button>
+        <button id="signup-button" class="text-button" type="button">New Teacher?</button>
+      </div>
       <p id="auth-message" class="message"></p>
     </section>
   </main>
 
   <div id="app" class="app hidden">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="brand" style="display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px;">
         <img src="nouscomplex.png" alt="Nous Complex Logo" style="height: 28px; width: 28px; object-fit: contain; flex-shrink: 0;">
         <span style="font-size: 15px; font-weight: 600; color: white; white-space: nowrap;">Nous Complex</span>
@@ -130,8 +213,10 @@
         <button data-page="attendance">Mark Attendance</button>
         <button data-page="students">Students</button>
         <button data-page="classes">Classes</button>
+        <button data-page="holidays" data-admin-only>Holidays</button>
         <button data-page="teachers" data-admin-only>Teachers</button>
         <button data-page="reports">Reports</button>
+        <button data-page="admin-tools" data-admin-only>Admin Tools</button>
       </nav>
       <div class="sidebar-bottom">
         <p id="user-name"></p>
@@ -227,6 +312,33 @@
     </section>
   </template>
 
+  <template id="holidays-template">
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Holiday Management</h2>
+      </div>
+      <p class="muted">Set holidays for specific classes. Students won't be marked absent on these dates.</p>
+      <div class="admin-panel">
+        <h3>Add Holiday</h3>
+        <div class="form-grid">
+          <label>Class
+            <select id="holiday-class">
+              <option value="">All Classes</option>
+            </select>
+          </label>
+          <label>Date
+            <input id="holiday-date" type="date">
+          </label>
+          <label>Reason
+            <input id="holiday-reason" placeholder="e.g., Eid Holiday">
+          </label>
+        </div>
+        <button id="add-holiday" class="primary" style="margin-top:10px;">Add Holiday</button>
+      </div>
+      <div id="holidays-list" style="margin-top:20px;"></div>
+    </section>
+  </template>
+
   <template id="teachers-template">
     <section class="panel">
       <div class="panel-heading">
@@ -261,8 +373,8 @@
       <div class="form-grid" style="grid-template-columns:1fr">
         <label>Show
           <select id="report-view">
-            <option value="both">Summary + Detailed Records</option>
             <option value="summary">Summary By Student Only</option>
+            <option value="both">Summary + Detailed Records</option>
             <option value="detail">Detailed Records Only</option>
           </select>
         </label>
@@ -287,6 +399,38 @@
           <h2>Detailed Attendance Records</h2>
         </div>
         <div id="report-table"></div>
+      </div>
+    </section>
+  </template>
+
+  <template id="admin-tools-template">
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>Admin Tools</h2>
+      </div>
+      <div class="admin-panel">
+        <h3>Clear Attendance Data</h3>
+        <p class="muted">Delete attendance records for a specific date range. This action cannot be undone.</p>
+        <div class="form-grid">
+          <label>From Date
+            <input id="clear-from" type="date">
+          </label>
+          <label>To Date
+            <input id="clear-to" type="date">
+          </label>
+          <label>Class
+            <select id="clear-class">
+              <option value="">All Classes</option>
+            </select>
+          </label>
+          <label>Student
+            <select id="clear-student">
+              <option value="">All Students</option>
+            </select>
+          </label>
+        </div>
+        <button id="clear-attendance" class="danger" style="background:#ef4444;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;margin-top:10px;">Clear Attendance Records</button>
+        <div id="clear-result" style="margin-top:10px;"></div>
       </div>
     </section>
   </template>
