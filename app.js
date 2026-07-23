@@ -9,7 +9,13 @@
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
   const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
-  const flash = (message, error = false) => { const el = $("#flash"); el.textContent = message; el.className = `flash ${error ? "error" : ""}`; el.style.display = "block"; setTimeout(() => el.style.display = "none", 4500); };
+  const flash = (message, error = false) => { 
+    const el = $("#flash"); 
+    el.textContent = message; 
+    el.className = `flash ${error ? "error" : "success"}`; 
+    el.style.display = "block"; 
+    setTimeout(() => el.style.display = "none", 4500); 
+  };
   const setTemplate = id => { content.replaceChildren($(id).content.cloneNode(true)); };
   const empty = text => `<div class="empty">${esc(text)}</div>`;
   const isAdmin = () => state.profile?.role === "admin";
@@ -252,7 +258,6 @@
       "admin-tools":"Admin Tools"
     })[page];
     $("#today").textContent = fmt.format(new Date()); 
-    $(".sidebar")?.classList.remove("open");
     
     try { 
       await ({ 
@@ -752,6 +757,23 @@
     }
   }
 
+  // --- SIDEBAR TOGGLE FUNCTIONS ---
+  function openSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) sidebar.classList.add('open');
+    if (overlay) overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (sidebar) sidebar.classList.remove('open');
+    if (overlay) overlay.classList.remove('show');
+    document.body.style.overflow = '';
+  }
+
   // --- INIT ---
   function init() {
     const loadingScreen = document.getElementById('loading-screen');
@@ -778,11 +800,92 @@
       $("#reset-message").textContent = "";
     };
     
-    // Navigation
-    $("#nav").onclick = e => { 
-      const button = e.target.closest("button[data-page]"); 
-      if (button) navigate(button.dataset.page); 
-    };
+    // --- MOBILE SIDEBAR TOGGLE ---
+    const menuToggle = document.getElementById('menu-toggle-btn');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const closeBtn = document.getElementById('sidebar-close-btn');
+
+    // Toggle sidebar on menu button click
+    if (menuToggle) {
+      menuToggle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (sidebar && sidebar.classList.contains('open')) {
+          closeSidebar();
+        } else {
+          openSidebar();
+        }
+      });
+    }
+
+    // Close sidebar on overlay click
+    if (overlay) {
+      overlay.addEventListener('click', closeSidebar);
+    }
+
+    // Close sidebar on close button click
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeSidebar);
+    }
+
+    // Close sidebar on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeSidebar();
+      }
+    });
+
+    // Handle window resize - close sidebar on desktop
+    window.addEventListener('resize', function() {
+      if (window.innerWidth > 768 && sidebar) {
+        sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('show');
+        document.body.style.overflow = '';
+      }
+    });
+
+    // Close sidebar when clicking a navigation link (mobile)
+    document.addEventListener('click', function(e) {
+      const navButton = e.target.closest('#nav button[data-page]');
+      if (navButton && window.innerWidth <= 768) {
+        setTimeout(closeSidebar, 300);
+      }
+    });
+
+    // --- NAVIGATION ---
+    // Use event delegation for navigation buttons
+    document.addEventListener('click', function(e) {
+      const button = e.target.closest('#nav button[data-page]');
+      if (button) {
+        e.preventDefault();
+        const page = button.dataset.page;
+        if (page) {
+          navigate(page);
+        }
+      }
+    });
+    
+    // Also keep the original handler for compatibility
+    const navElement = document.getElementById('nav');
+    if (navElement) {
+      navElement.addEventListener('click', function(e) {
+        const button = e.target.closest('button[data-page]');
+        if (button) {
+          e.preventDefault();
+          const page = button.dataset.page;
+          if (page) navigate(page);
+        }
+      });
+    }
+    
+    // Handle "Mark Attendance" button on dashboard
+    document.addEventListener('click', function(e) {
+      const goButton = e.target.closest('[data-go]');
+      if (goButton) {
+        const page = goButton.dataset.go;
+        if (page) navigate(page);
+      }
+    });
     
     // Check if user came from password reset email
     const params = new URLSearchParams(window.location.search);
@@ -798,9 +901,12 @@
         refresh_token: refreshToken
       }).then(() => {
         hideLoadingScreen();
-        $("#reset-modal").classList.add("show");
+        setTimeout(() => {
+          $("#reset-modal").classList.add("show");
+        }, 500);
         window.history.replaceState({}, '', '/nousomplex-attendance/');
-      }).catch(() => {
+      }).catch((err) => {
+        console.error('Reset link error:', err);
         hideLoadingScreen();
         flash("Invalid or expired reset link. Please try again.", true);
       });
