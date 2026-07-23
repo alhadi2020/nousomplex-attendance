@@ -226,12 +226,10 @@
       hideLoadingScreen();
       $("#reset-modal").classList.remove("show");
       flash("Password updated successfully. Please sign in with your new password.");
-      // Clear the modal fields
       $("#reset-password").value = "";
       $("#reset-password-confirm").value = "";
       $("#reset-message").textContent = "";
       
-      // Sign out and show login
       await state.db.auth.signOut();
       showAuth();
     } catch (e) {
@@ -600,7 +598,6 @@
     $("#pdf-export").onclick = () => { if (allowExport) window.print(); }; 
     $("#report-view").onchange = applyReportView; 
     await runReport();
-    // Set default view to summary
     $("#report-view").value = "summary";
     applyReportView();
   }
@@ -672,11 +669,9 @@
     setTemplate("#admin-tools-template");
     await getClasses();
     
-    // Populate class dropdown
     $("#clear-class").innerHTML = `<option value="">All Classes</option>` + 
       state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
     
-    // Populate student dropdown (initially empty)
     $("#clear-class").onchange = async () => {
       const classId = $("#clear-class").value;
       if (classId) {
@@ -688,14 +683,12 @@
       }
     };
     
-    // Set default dates
     const now = new Date();
     const monthAgo = new Date(now);
     monthAgo.setMonth(monthAgo.getMonth() - 1);
     $("#clear-from").value = monthAgo.toISOString().slice(0, 10);
     $("#clear-to").value = isoToday();
     
-    // Clear button
     $("#clear-attendance").onclick = clearAttendanceData;
     applyRoleVisibility();
   }
@@ -759,7 +752,7 @@
     }
   }
 
-  // --- Init ---
+  // --- INIT ---
   function init() {
     const loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
@@ -786,14 +779,83 @@
     };
     
     // Navigation
-    $("#nav").onclick = e => { const button = e.target.closest("button[data-page]"); if (button) navigate(button.dataset.page); };
-    
-    // Sidebar toggle - mobile only
-    $("#menu-toggle").onclick = () => $(".sidebar").classList.toggle("open");
-    $("#sidebar-toggle").onclick = () => {
-      const sidebar = $("#sidebar");
-      sidebar.classList.toggle("hidden");
+    $("#nav").onclick = e => { 
+      const button = e.target.closest("button[data-page]"); 
+      if (button) navigate(button.dataset.page); 
     };
+    
+    // --- SIDEBAR TOGGLE - MOBILE ONLY (FIXED) ---
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const mainContent = document.querySelector('.main');
+
+    if (sidebarToggle && sidebar) {
+      // Toggle sidebar on button click
+      sidebarToggle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        sidebar.classList.toggle('hidden');
+        this.classList.toggle('active');
+        
+        // Update aria-label
+        const isOpen = !sidebar.classList.contains('hidden');
+        this.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+        
+        // Adjust main content padding when sidebar is open
+        if (mainContent) {
+          if (isOpen && window.innerWidth <= 768) {
+            mainContent.style.paddingLeft = '0px';
+          }
+        }
+      });
+
+      // Close sidebar when clicking outside (only on mobile)
+      document.addEventListener('click', function(e) {
+        if (window.innerWidth <= 768) {
+          const isClickInsideSidebar = sidebar.contains(e.target);
+          const isClickOnToggle = sidebarToggle.contains(e.target);
+          
+          if (!isClickInsideSidebar && !isClickOnToggle && !sidebar.classList.contains('hidden')) {
+            sidebar.classList.add('hidden');
+            sidebarToggle.classList.remove('active');
+            sidebarToggle.setAttribute('aria-label', 'Open menu');
+          }
+        }
+      });
+
+      // Close sidebar when window resizes to desktop
+      window.addEventListener('resize', function() {
+        if (window.innerWidth > 768) {
+          sidebar.classList.remove('hidden');
+          sidebarToggle.classList.remove('active');
+          sidebarToggle.setAttribute('aria-label', 'Open menu');
+          if (mainContent) {
+            mainContent.style.paddingLeft = '';
+          }
+        } else {
+          // On mobile, ensure sidebar is hidden by default
+          sidebar.classList.add('hidden');
+          sidebarToggle.classList.remove('active');
+          sidebarToggle.setAttribute('aria-label', 'Open menu');
+        }
+      });
+
+      // On mobile load, ensure sidebar is hidden
+      if (window.innerWidth <= 768) {
+        sidebar.classList.add('hidden');
+        sidebarToggle.classList.remove('active');
+        sidebarToggle.setAttribute('aria-label', 'Open menu');
+      }
+    }
+
+    // Also handle the old menu toggle for backward compatibility
+    const menuToggle = document.getElementById('menu-toggle');
+    if (menuToggle) {
+      menuToggle.onclick = () => {
+        if (sidebar) {
+          sidebar.classList.toggle('open');
+        }
+      };
+    }
     
     // Check if user came from password reset email
     const params = new URLSearchParams(window.location.search);
@@ -802,17 +864,14 @@
     const type = params.get('type');
     
     if (type === 'recovery' && accessToken) {
-      // User clicked password reset link - show reset modal
       showLoadingScreen('Verifying reset link...');
       
-      // Set the session with the recovery token
       state.db.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken
       }).then(() => {
         hideLoadingScreen();
         $("#reset-modal").classList.add("show");
-        // Clean URL
         window.history.replaceState({}, '', '/nousomplex-attendance/');
       }).catch(() => {
         hideLoadingScreen();
