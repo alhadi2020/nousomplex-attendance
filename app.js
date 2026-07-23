@@ -796,11 +796,9 @@
         sidebar.classList.toggle('hidden');
         this.classList.toggle('active');
         
-        // Update aria-label
         const isOpen = !sidebar.classList.contains('hidden');
         this.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
         
-        // Adjust main content padding when sidebar is open
         if (mainContent) {
           if (isOpen && window.innerWidth <= 768) {
             mainContent.style.paddingLeft = '0px';
@@ -832,7 +830,6 @@
             mainContent.style.paddingLeft = '';
           }
         } else {
-          // On mobile, ensure sidebar is hidden by default
           sidebar.classList.add('hidden');
           sidebarToggle.classList.remove('active');
           sidebarToggle.setAttribute('aria-label', 'Open menu');
@@ -845,6 +842,29 @@
         sidebarToggle.classList.remove('active');
         sidebarToggle.setAttribute('aria-label', 'Open menu');
       }
+    }
+
+    // Hide sidebar toggle on login screen
+    const authScreen = document.getElementById('auth-screen');
+    if (authScreen && sidebarToggle) {
+      // Initially hide if on login screen
+      if (!authScreen.classList.contains('hidden')) {
+        sidebarToggle.style.display = 'none';
+      }
+      
+      // Observe changes to auth screen visibility
+      const observer = new MutationObserver(() => {
+        if (authScreen.classList.contains('hidden')) {
+          // User is logged in, show toggle on mobile
+          if (window.innerWidth <= 768) {
+            sidebarToggle.style.display = 'flex';
+          }
+        } else {
+          // User is on login screen, hide toggle
+          sidebarToggle.style.display = 'none';
+        }
+      });
+      observer.observe(authScreen, { attributes: true, attributeFilter: ['class'] });
     }
 
     // Also handle the old menu toggle for backward compatibility
