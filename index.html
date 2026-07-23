@@ -65,7 +65,6 @@
       width: 100%;
       border: 1px solid #e5e7eb;
     }
-    /* Professional two-line title */
     .auth-card .brand-title {
       text-align: center;
       margin-bottom: 5px;
@@ -162,23 +161,7 @@
       flex-wrap: wrap;
     }
 
-    /* Sidebar toggle - REMOVED completely */
-    .sidebar-toggle {
-      display: none !important;
-    }
-
-    /* Sidebar styles */
-    .sidebar {
-      transition: transform 0.3s ease;
-    }
-    .sidebar.hidden {
-      transform: translateX(-100%);
-    }
-    .sidebar:not(.hidden) {
-      transform: translateX(0);
-    }
-
-    /* App layout */
+    /* Sidebar - Mobile Friendly */
     #app {
       display: flex;
       min-height: 100vh;
@@ -186,105 +169,282 @@
       max-width: 100%;
       overflow-x: hidden;
     }
+
+    .sidebar {
+      background: #1a1a2e;
+      color: white;
+      width: 280px;
+      min-height: 100vh;
+      flex-shrink: 0;
+      overflow-y: auto;
+      transition: transform 0.3s ease;
+      z-index: 100;
+    }
+
+    .sidebar .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 15px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .sidebar .brand img {
+      height: 32px;
+      width: 32px;
+      object-fit: contain;
+    }
+
+    .sidebar .brand span {
+      font-size: 16px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .sidebar nav {
+      padding: 10px 0;
+    }
+
+    .sidebar nav button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 12px 20px;
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.7);
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+      border-left: 3px solid transparent;
+    }
+
+    .sidebar nav button:hover {
+      background: rgba(255,255,255,0.05);
+      color: white;
+    }
+
+    .sidebar nav button.active {
+      background: rgba(79, 70, 229, 0.15);
+      color: white;
+      border-left-color: #4f46e5;
+    }
+
+    .sidebar-bottom {
+      padding: 15px 20px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      margin-top: auto;
+    }
+
+    .sidebar-bottom #user-name {
+      font-weight: 600;
+      font-size: 14px;
+      margin: 0 0 5px 0;
+    }
+
+    .sidebar-bottom .role-badge {
+      display: inline-block;
+      background: rgba(79, 70, 229, 0.3);
+      color: #4f46e5;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .sidebar-bottom #signout {
+      background: none;
+      border: none;
+      color: #ef4444;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 8px 0;
+      display: block;
+      margin-top: 8px;
+    }
+
+    .sidebar-bottom #signout:hover {
+      color: #dc2626;
+      text-decoration: underline;
+    }
+
+    /* Main content */
     .main {
       flex: 1;
       min-width: 0;
       padding: 20px;
       overflow-x: hidden;
       width: 100%;
+      background: #f8fafc;
     }
 
-    /* Mobile responsive - NO HAMBURGER */
+    /* Mobile overlay */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 99;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .sidebar-overlay.show {
+      display: block;
+      opacity: 1;
+    }
+
+    /* Mobile menu toggle button */
+    .menu-toggle-btn {
+      display: none;
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 1000;
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      width: 44px;
+      height: 44px;
+      font-size: 22px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .menu-toggle-btn:hover {
+      background: #4338ca;
+      transform: scale(1.05);
+    }
+
+    /* Close button inside sidebar */
+    .sidebar-close-btn {
+      display: none;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: none;
+      border: none;
+      color: rgba(255,255,255,0.5);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 5px 10px;
+      z-index: 10;
+    }
+
+    .sidebar-close-btn:hover {
+      color: white;
+    }
+
+    /* Mobile responsive */
     @media (max-width: 768px) {
+      .menu-toggle-btn {
+        display: flex !important;
+      }
+
       .sidebar {
         position: fixed;
         top: 0;
         left: 0;
         height: 100%;
         width: 280px;
-        z-index: 999;
-        background: #1a1a2e;
-        overflow-y: auto;
+        z-index: 100;
         transform: translateX(-100%);
         transition: transform 0.3s ease;
         box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+        padding-top: 10px;
       }
-      .sidebar:not(.hidden) {
+
+      .sidebar.open {
         transform: translateX(0);
       }
-      .sidebar.hidden {
-        transform: translateX(-100%);
+
+      .sidebar-close-btn {
+        display: block !important;
       }
+
+      .sidebar-overlay.show {
+        display: block;
+      }
+
       .main {
-        margin-left: 0 !important;
-        padding: 15px !important;
+        padding: 60px 12px 12px 12px !important;
         width: 100%;
         max-width: 100%;
         overflow-x: hidden;
       }
+
       .auth-card {
         padding: 30px 20px;
         margin: 10px;
       }
+
       .auth-card .brand-title .company-name {
         font-size: 26px;
       }
+
       .auth-card .brand-title .portal-subtitle {
         font-size: 16px;
       }
-      #menu-toggle {
-        display: none !important;
-      }
-      #app {
-        width: 100%;
-        max-width: 100%;
-        overflow-x: hidden;
-      }
+
       .stats {
         grid-template-columns: 1fr 1fr !important;
         gap: 10px !important;
       }
+
       .stats article {
         padding: 12px !important;
       }
+
       .table-wrap {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
       }
+
       .table-wrap table {
         min-width: 600px;
       }
+
       .form-grid {
         grid-template-columns: 1fr !important;
+      }
+
+      /* Hide the old menu toggle if exists */
+      #menu-toggle {
+        display: none !important;
       }
     }
 
     @media (min-width: 769px) {
+      .menu-toggle-btn {
+        display: none !important;
+      }
+
       .sidebar {
         transform: translateX(0) !important;
         position: relative;
-        width: 260px;
-        flex-shrink: 0;
         height: 100vh;
         overflow-y: auto;
-        background: #1a1a2e;
       }
-      .sidebar.hidden {
-        transform: translateX(0) !important;
+
+      .sidebar-close-btn {
+        display: none !important;
       }
+
+      .sidebar-overlay {
+        display: none !important;
+      }
+
       .main {
-        margin-left: 0;
-        flex: 1;
         padding: 20px 30px;
-        max-width: 100%;
-        overflow-x: hidden;
       }
-      #app {
-        display: flex !important;
-        width: 100%;
-        max-width: 100%;
-        overflow-x: hidden;
-      }
+
       #menu-toggle {
         display: none !important;
       }
@@ -298,11 +458,13 @@
       padding: 15px;
       margin-top: 15px;
     }
+
     .admin-panel h3 {
       color: #4f46e5;
       margin-top: 0;
       font-size: 16px;
     }
+
     .admin-panel .form-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -322,9 +484,11 @@
       align-items: center;
       justify-content: center;
     }
+
     .reset-modal.show {
       display: flex;
     }
+
     .reset-modal .modal-content {
       background: white;
       padding: 30px;
@@ -333,10 +497,12 @@
       width: 90%;
       box-shadow: 0 8px 32px rgba(0,0,0,0.2);
     }
+
     .reset-modal .modal-content h2 {
       color: #1a1a2e;
       margin-top: 0;
     }
+
     .reset-modal .modal-content input {
       width: 100%;
       padding: 10px;
@@ -344,11 +510,13 @@
       border-radius: 6px;
       margin: 8px 0;
     }
+
     .reset-modal .modal-content .toolbar {
       display: flex;
       gap: 10px;
       margin-top: 15px;
     }
+
     .reset-modal .modal-content .toolbar button {
       padding: 10px 20px;
       border: none;
@@ -356,10 +524,12 @@
       cursor: pointer;
       font-weight: 600;
     }
+
     .reset-modal .modal-content .toolbar .primary {
       background: #4f46e5;
       color: white;
     }
+
     .reset-modal .modal-content .toolbar .secondary {
       background: #e5e7eb;
       color: #374151;
@@ -372,18 +542,21 @@
       gap: 15px;
       margin-bottom: 20px;
     }
+
     .stats article {
       background: rgba(79, 70, 229, 0.05);
       padding: 15px 20px;
       border-radius: 8px;
       text-align: center;
     }
+
     .stats article span {
       display: block;
       color: #6b7280;
       font-size: 13px;
       font-weight: 500;
     }
+
     .stats article strong {
       font-size: 24px;
       color: #1a1a2e;
@@ -395,6 +568,27 @@
       max-width: 120px;
       height: auto;
       margin: 0 auto 15px auto;
+    }
+
+    /* Flash messages */
+    .flash {
+      display: none;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+
+    .flash.error {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    .flash.success {
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
     }
   </style>
 </head>
@@ -421,11 +615,13 @@
     </div>
   </div>
 
+  <!-- Mobile Menu Toggle Button -->
+  <button class="menu-toggle-btn" id="menu-toggle-btn" aria-label="Toggle menu">☰</button>
+
   <main id="auth-screen" class="auth-shell">
     <section class="auth-card">
       <div style="text-align: center;">
         <img src="nouscomplex.png" alt="Nous Complex" class="auth-logo">
-        <!-- Professional two-line title -->
         <div class="brand-title">
           <span class="company-name">Nous <span class="highlight">Complex</span></span>
           <span class="portal-subtitle">Attendance Portal</span>
@@ -450,10 +646,14 @@
   </main>
 
   <div id="app" class="app hidden">
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
     <aside class="sidebar" id="sidebar">
-      <div class="brand" style="display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 5px;">
-        <img src="nouscomplex.png" alt="Nous Complex Logo" style="height: 28px; width: 28px; object-fit: contain; flex-shrink: 0;">
-        <span style="font-size: 15px; font-weight: 600; color: white; white-space: nowrap;">Nous Complex</span>
+      <button class="sidebar-close-btn" id="sidebar-close-btn">✕</button>
+      <div class="brand">
+        <img src="nouscomplex.png" alt="Nous Complex Logo">
+        <span>Nous Complex</span>
       </div>
       <nav id="nav">
         <button data-page="dashboard" class="active">Dashboard</button>
@@ -467,9 +667,10 @@
       <div class="sidebar-bottom">
         <p id="user-name"></p>
         <span id="user-role" class="role-badge"></span>
-        <button id="signout" class="text-button"> Sign Out </button>
+        <button id="signout">Sign Out</button>
       </div>
     </aside>
+
     <section class="main">
       <header>
         <div>
