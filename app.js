@@ -113,6 +113,7 @@
       
       $("#auth-screen").classList.add("hidden"); 
       $("#app").classList.remove("hidden");
+      $("#menu-toggle-btn")?.classList.remove("is-hidden");
       
       applyRoleVisibility();
       await navigate("dashboard");
@@ -130,6 +131,7 @@
     state.user = state.profile = state.teacher = null; 
     $("#app").classList.add("hidden"); 
     $("#auth-screen").classList.remove("hidden");
+    $("#menu-toggle-btn")?.classList.add("is-hidden");
     cachedClasses = null;
     hideLoadingScreen();
   }
@@ -764,6 +766,7 @@
     if (sidebar) sidebar.classList.add('open');
     if (overlay) overlay.classList.add('show');
     document.body.style.overflow = 'hidden';
+    $("#menu-toggle-btn")?.classList.add("is-hidden");
   }
 
   function closeSidebar() {
@@ -772,6 +775,7 @@
     if (sidebar) sidebar.classList.remove('open');
     if (overlay) overlay.classList.remove('show');
     document.body.style.overflow = '';
+    $("#menu-toggle-btn")?.classList.remove("is-hidden");
   }
 
   // --- INIT ---
@@ -782,6 +786,15 @@
     }
     
     if (configured) state.db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+    if (state.db) {
+      state.db.auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") {
+          hideLoadingScreen();
+          $("#reset-modal").classList.add("show");
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      });
+    }
     $("#auth-form").onsubmit = signIn; 
     $("#signup-button").onclick = signUp;
     $("#forgot-password-btn").onclick = forgotPassword;
@@ -865,18 +878,6 @@
       }
     });
     
-    // Also keep the original handler for compatibility
-    const navElement = document.getElementById('nav');
-    if (navElement) {
-      navElement.addEventListener('click', function(e) {
-        const button = e.target.closest('button[data-page]');
-        if (button) {
-          e.preventDefault();
-          const page = button.dataset.page;
-          if (page) navigate(page);
-        }
-      });
-    }
     
     // Handle "Mark Attendance" button on dashboard
     document.addEventListener('click', function(e) {
@@ -886,31 +887,6 @@
         if (page) navigate(page);
       }
     });
-    
-    // Check if user came from password reset email
-    const params = new URLSearchParams(window.location.search);
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const type = params.get('type');
-    
-    if (type === 'recovery' && accessToken) {
-      showLoadingScreen('Verifying reset link...');
-      
-      state.db.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken
-      }).then(() => {
-        hideLoadingScreen();
-        setTimeout(() => {
-          $("#reset-modal").classList.add("show");
-        }, 500);
-        window.history.replaceState({}, '', '/nousomplex-attendance/');
-      }).catch((err) => {
-        console.error('Reset link error:', err);
-        hideLoadingScreen();
-        flash("Invalid or expired reset link. Please try again.", true);
-      });
-    }
     
     if (configured) {
       loadSession();
