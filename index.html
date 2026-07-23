@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Attendance Portal</title>
+  <title>Nous Complex Attendance Portal</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="styles.css">
   <style>
@@ -143,38 +143,35 @@
       flex-wrap: wrap;
     }
 
-    /* Sidebar toggle button - ONLY on mobile - FIXED */
+    /* Sidebar toggle button - ONLY on mobile - NO BACKGROUND */
     .sidebar-toggle {
       position: fixed;
       top: 12px;
       left: 12px;
       z-index: 1000;
-      background: #4f46e5;
-      color: white;
+      background: transparent !important;
+      color: #4f46e5;
       border: none;
-      border-radius: 8px;
-      width: 44px;
-      height: 44px;
+      width: 40px;
+      height: 40px;
       cursor: pointer;
       font-size: 0;
       display: none;
-      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
-      transition: all 0.3s ease;
       align-items: center;
       justify-content: center;
       padding: 0;
       line-height: 1;
+      transition: all 0.3s ease;
     }
     .sidebar-toggle:hover {
-      background: #4338ca;
-      transform: scale(1.05);
+      transform: scale(1.1);
     }
     /* Three-line hamburger icon using CSS */
     .sidebar-toggle .hamburger {
       display: flex;
       flex-direction: column;
       gap: 5px;
-      width: 22px;
+      width: 24px;
       align-items: center;
       justify-content: center;
     }
@@ -182,11 +179,11 @@
       display: block;
       width: 100%;
       height: 3px;
-      background: white;
+      background: #4f46e5;
       border-radius: 3px;
       transition: all 0.3s ease;
     }
-    /* When sidebar is hidden (open state), animate to X */
+    /* When sidebar is open, animate to X */
     .sidebar-toggle.active .hamburger span:nth-child(1) {
       transform: rotate(45deg) translate(5px, 5px);
     }
@@ -208,10 +205,27 @@
       transform: translateX(0);
     }
 
+    /* App layout - FIXED extra space */
+    #app {
+      display: flex;
+      min-height: 100vh;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+    .main {
+      flex: 1;
+      min-width: 0;
+      padding: 20px;
+      overflow-x: hidden;
+      width: 100%;
+    }
+
     /* Mobile responsive */
     @media (max-width: 768px) {
       .sidebar-toggle {
         display: flex !important;
+        background: transparent !important;
       }
       .sidebar {
         position: fixed;
@@ -235,9 +249,9 @@
       .main {
         margin-left: 0 !important;
         padding: 60px 15px 15px 15px !important;
-      }
-      .sidebar-toggle {
-        display: flex !important;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
       }
       .auth-card {
         padding: 30px 20px;
@@ -246,8 +260,42 @@
       .auth-card .portal-name {
         font-size: 22px;
       }
-      /* Hide the menu toggle button that was previously used */
+      /* Hide the old menu toggle button */
       #menu-toggle {
+        display: none !important;
+      }
+      /* Fix for app container */
+      #app {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+      /* Stats on mobile */
+      .stats {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 10px !important;
+      }
+      .stats article {
+        padding: 12px !important;
+      }
+      /* Tables on mobile */
+      .table-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .table-wrap table {
+        min-width: 600px;
+      }
+      /* Form grids on mobile */
+      .form-grid {
+        grid-template-columns: 1fr !important;
+      }
+      /* Hide sidebar toggle on login screen */
+      .auth-shell .sidebar-toggle,
+      .auth-shell ~ .sidebar-toggle {
+        display: none !important;
+      }
+      body.auth-page .sidebar-toggle {
         display: none !important;
       }
     }
@@ -261,6 +309,9 @@
         position: relative;
         width: 260px;
         flex-shrink: 0;
+        height: 100vh;
+        overflow-y: auto;
+        background: #1a1a2e;
       }
       .sidebar.hidden {
         transform: translateX(0) !important;
@@ -268,11 +319,21 @@
       .main {
         margin-left: 0;
         flex: 1;
+        padding: 20px 30px;
+        max-width: 100%;
+        overflow-x: hidden;
       }
       #app {
         display: flex !important;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
       }
       #menu-toggle {
+        display: none !important;
+      }
+      .auth-shell .sidebar-toggle,
+      .auth-shell ~ .sidebar-toggle {
         display: none !important;
       }
     }
@@ -351,6 +412,30 @@
       background: #e5e7eb;
       color: #374151;
     }
+
+    /* Stats on desktop */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .stats article {
+      background: rgba(79, 70, 229, 0.05);
+      padding: 15px 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .stats article span {
+      display: block;
+      color: #6b7280;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .stats article strong {
+      font-size: 24px;
+      color: #1a1a2e;
+    }
   </style>
 </head>
 <body>
@@ -376,7 +461,7 @@
     </div>
   </div>
 
-  <!-- Sidebar Toggle Button (Mobile Only) - FIXED with CSS hamburger -->
+  <!-- Sidebar Toggle Button (Mobile Only) - NO BACKGROUND -->
   <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle menu">
     <div class="hamburger">
       <span></span>
