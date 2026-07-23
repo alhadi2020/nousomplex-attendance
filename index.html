@@ -323,6 +323,10 @@
       transform: scale(1.05);
     }
 
+    .menu-toggle-btn.is-hidden {
+      display: none !important;
+    }
+
     /* Close button inside sidebar */
     .sidebar-close-btn {
       display: none;
@@ -616,7 +620,7 @@
   </div>
 
   <!-- Mobile Menu Toggle Button -->
-  <button class="menu-toggle-btn" id="menu-toggle-btn" aria-label="Toggle menu">☰</button>
+  <button class="menu-toggle-btn is-hidden" id="menu-toggle-btn" aria-label="Toggle menu">☰</button>
 
   <main id="auth-screen" class="auth-shell">
     <section class="auth-card">
