@@ -5,7 +5,7 @@
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const content = $("#page-content");
-  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], reportStudentResults: [], reportDateRange: {} };
+  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], reportStudentResults: [], reportDateRange: {}, reportTotalDays: 0, reportTotalHolidays: 0, reportTotalDesignatedDays: 0 };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
   const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
@@ -473,6 +473,10 @@
       const classId = $("#report-class").value; 
       const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("roll_number")); 
       $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("")}`; 
+      // If a student was selected, re-run report
+      if (document.getElementById('report-student').value) {
+        await runReport();
+      }
     };
     const allowExport = isAdmin() || state.teacher?.can_export !== false;
     $$(".export-only").forEach(el => el.classList.toggle("hidden", !allowExport));
@@ -517,10 +521,36 @@
     
     await getClasses();
     
+    // Get all dates in range
+    const allDates = getDateRangeArray(from, to);
+    const totalDaysInRange = allDates.length;
+    
+    // Calculate holidays in the range (weekends + manually added holidays)
+    let holidayQuery = state.db.from("holidays").select("date,class_id").gte("date", from).lte("date", to);
+    if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
+    const holidays = await api(holidayQuery);
+    const holidayDates = new Set(holidays.map(h => h.date));
+    
+    // Count total holidays (weekends + manual holidays)
+    let totalHolidays = 0;
+    allDates.forEach(date => {
+      const isWeekendDay = isWeekend(date);
+      const isHolidayDay = holidayDates.has(date);
+      if (isWeekendDay || isHolidayDay) {
+        totalHolidays++;
+      }
+    });
+    
+    // Total designated days = total days - holidays
+    const totalDesignatedDays = totalDaysInRange - totalHolidays;
+    
     // Get all students in the class (or all classes)
     let studentQuery = state.db.from("students").select("id,name,roll_number,class_id,classes(name,section)").eq("active", true);
     if (classId) studentQuery = studentQuery.eq("class_id", classId);
     const students = await api(studentQuery.order("roll_number"));
+    
+    // If a specific student is selected, filter students
+    const filteredStudents = studentId ? students.filter(s => s.id === studentId) : students;
     
     // Get all attendance sessions in date range
     let sessionQuery = state.db.from("attendance_sessions").select("id,attendance_date,class_id")
@@ -535,17 +565,7 @@
       .in("session_id", sessionIds)) : [];
     if (studentId) records = records.filter(r => r.student_id === studentId);
     
-    // Get holidays
-    let holidayQuery = state.db.from("holidays").select("date,class_id").gte("date", from).lte("date", to);
-    if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
-    const holidays = await api(holidayQuery);
-    const holidayDates = new Set(holidays.map(h => h.date));
-    
-    // Get all dates in range
-    const allDates = getDateRangeArray(from, to);
-    
-    // Calculate for each student
-    const studentResults = students.map(student => {
+    // Calculate for each student    const studentResults = filteredStudents.map(student => {
       const studentRecords = records.filter(r => r.student_id === student.id);
       const recordMap = {};
       studentRecords.forEach(r => {
@@ -553,9 +573,8 @@
         if (session) recordMap[session.attendance_date] = r.status;
       });
       
-      let totalDays = 0;
-      let holidayCount = 0;
-      let designatedDays = 0;
+      let studentHolidayCount = 0;
+      let designatedDaysCount = 0;
       let presentCount = 0;
       let absentCount = 0;
       let leaveCount = 0;
@@ -567,51 +586,68 @@
         const status = recordMap[date];
         
         if (isHolidayOrWeekend) {
-          holidayCount++;
+          studentHolidayCount++;
         } else {
-          designatedDays++;
-          totalDays++;
+          designatedDaysCount++;
           if (status === 'present') presentCount++;
           else if (status === 'absent') absentCount++;
           else if (status === 'leave') leaveCount++;
         }
       });
       
-      const attendancePercentage = designatedDays > 0 ? Math.round((presentCount / designatedDays) * 100) : 0;
+      // Calculate attendance percentage based on designated days
+      const attendancePercentage = designatedDaysCount > 0 ? Math.round((presentCount / designatedDaysCount) * 100) : 0;
       
       return {
         id: student.id,
         name: student.name,
         roll: student.roll_number || 'N/A',
         class: student.classes ? `${student.classes.name}${student.classes.section ? ` — ${student.classes.section}` : ''}` : 'N/A',
-        totalDays,
-        holidayCount,
-        designatedDays,
-        presentCount,
-        absentCount,
-        leaveCount,
-        attendancePercentage,
-        unmarked: designatedDays - (presentCount + absentCount + leaveCount)
+        totalDays: totalDaysInRange,
+        holidayCount: studentHolidayCount,
+        designatedDays: designatedDaysCount,
+        presentCount: presentCount,
+        absentCount: absentCount,
+        leaveCount: leaveCount,
+        attendancePercentage: attendancePercentage,
+        unmarked: designatedDaysCount - (presentCount + absentCount + leaveCount)
       };
     });
     
     // Store for export
     state.reportStudentResults = studentResults;
     state.reportDateRange = { from, to };
+    state.reportTotalDays = totalDaysInRange;
+    state.reportTotalHolidays = totalHolidays;
+    state.reportTotalDesignatedDays = totalDesignatedDays;
+    
+    // Store detailed records for detailed report
+    state.reportRows = records.map(r => {
+      const session = sessions.find(s => s.id === r.session_id);
+      const student = students.find(s => s.id === r.student_id);
+      return {
+        id: r.id,
+        date: session?.attendance_date || '',
+        class: session?.class_id ? (state.classes.find(c => c.id === session.class_id)?.name || '') : '',
+        student: student?.name || '',
+        roll: student?.roll_number || '',
+        status: r.status || '',
+        remarks: r.remarks || ''
+      };
+    });
+    state.reportRows.sort((a, b) => (a.roll || '').localeCompare(b.roll || '', undefined, { numeric: true }));
     
     // Display summary stats
     const totalStudents = studentResults.length;
-    const totalDesignatedDays = studentResults.reduce((sum, s) => sum + s.designatedDays, 0);
     const totalPresent = studentResults.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = studentResults.reduce((sum, s) => sum + s.absentCount, 0);
     const totalLeave = studentResults.reduce((sum, s) => sum + s.leaveCount, 0);
-    const totalHolidays = studentResults.reduce((sum, s) => sum + s.holidayCount, 0) / Math.max(totalStudents, 1);
     const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
     
     document.getElementById('report-summary').innerHTML = `
       <article><span>Total Students</span><strong>${totalStudents}</strong></article>
-      <article><span>Total Days</span><strong>${allDates.length}</strong></article>
-      <article><span>Holidays</span><strong>${Math.round(totalHolidays)}</strong></article>
+      <article><span>Total Days</span><strong>${totalDaysInRange}</strong></article>
+      <article><span>Holidays</span><strong>${totalHolidays}</strong></article>
       <article><span>Designated Days</span><strong>${totalDesignatedDays}</strong></article>
       <article><span>Present</span><strong>${totalPresent}</strong></article>
       <article><span>Absent</span><strong>${totalAbsent}</strong></article>
@@ -660,19 +696,70 @@
       ` : empty("No students found.");
     }
     
-    // Detailed records
-    const admin = isAdmin();
-    document.getElementById('report-table').innerHTML = state.reportRows.length ? 
-      `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td><span class="status ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : 
-      empty("No attendance records match this report.");
+    // Render detailed records
+    const detailEl = document.getElementById('report-table');
+    if (detailEl) {
+      if (state.reportRows.length > 0) {
+        // Filter rows for selected student if needed
+        let displayRows = state.reportRows;
+        if (studentId) {
+          const selectedStudent = filteredStudents[0];
+          if (selectedStudent) {
+            displayRows = state.reportRows.filter(r => r.student === selectedStudent.name);
+          }
+        }
+        
+        if (displayRows.length > 0) {
+          detailEl.innerHTML = `
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Roll No.</th>
+                    <th>Student</th>
+                    <th>Date</th>
+                    <th>Class</th>
+                    <th>Status</th>
+                    <th>Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${displayRows.map(r => `
+                    <tr>
+                      <td>${esc(r.roll)}</td>
+                      <td>${esc(r.student)}</td>
+                      <td>${esc(r.date)}</td>
+                      <td>${esc(r.class)}</td>
+                      <td><span class="status ${r.status}">${esc(r.status || '—')}</span></td>
+                      <td>${esc(r.remarks || "—")}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `;
+        } else {
+          detailEl.innerHTML = empty("No detailed records found for the selected student.");
+        }
+      } else {
+        detailEl.innerHTML = empty("No attendance records match this report.");
+      }
+    }
     
     applyReportView();
   }
 
   function applyReportView() {
     const view = $("#report-view")?.value || "summary";
-    $("#summary-section").style.display = view === "detail" ? "none" : "";
-    $("#detail-section").style.display = view === "summary" ? "none" : "";
+    const summarySection = document.getElementById('summary-section');
+    const detailSection = document.getElementById('detail-section');
+    
+    if (summarySection) {
+      summarySection.style.display = (view === "summary" || view === "both") ? "" : "none";
+    }
+    if (detailSection) {
+      detailSection.style.display = (view === "detail" || view === "both") ? "" : "none";
+    }
   }
 
   function exportExcel(mode = "both") {
@@ -684,6 +771,7 @@
     }
     const book = XLSX.utils.book_new();
     
+    // Summary sheet
     const summaryData = state.reportStudentResults.map(s => ({
       "Roll No.": s.roll,
       "Student": s.name,
@@ -700,13 +788,23 @@
     XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(summaryData), "Summary");
     
     if (mode === "both" || mode === "detail") {
-      const detailData = state.reportRows.map(r => ({
+      // Filter detailed rows for selected student if needed
+      let detailRows = state.reportRows;
+      const studentId = document.getElementById('report-student')?.value;
+      if (studentId) {
+        const student = state.reportStudentResults.find(s => s.id === studentId);
+        if (student) {
+          detailRows = state.reportRows.filter(r => r.student === student.name);
+        }
+      }
+      
+      const detailData = detailRows.map(r => ({
         "Roll No.": r.roll,
         "Student": r.student,
         "Date": r.date,
         "Class": r.class,
-        "Status": r.status,
-        "Remarks": r.remarks
+        "Status": r.status || '—',
+        "Remarks": r.remarks || '—'
       }));
       XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(detailData), "Detailed");
     }
@@ -728,12 +826,23 @@
     const { from, to } = state.reportDateRange || {};
     const classFilter = document.getElementById('report-class')?.value || '';
     const className = classFilter ? state.classes.find(c => c.id === classFilter)?.name || '' : 'All Classes';
+    const studentId = document.getElementById('report-student')?.value;
+    const studentName = studentId ? results.find(s => s.id === studentId)?.name || '' : 'All Students';
     
-    const totalDesignatedDays = results.reduce((sum, s) => sum + s.designatedDays, 0);
+    const totalDesignatedDays = state.reportTotalDesignatedDays || results.reduce((sum, s) => sum + s.designatedDays, 0);
     const totalPresent = results.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = results.reduce((sum, s) => sum + s.absentCount, 0);
     const totalLeave = results.reduce((sum, s) => sum + s.leaveCount, 0);
     const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
+    
+    // Get detailed records for PDF
+    let detailRows = state.reportRows;
+    if (studentId) {
+      const student = results.find(s => s.id === studentId);
+      if (student) {
+        detailRows = state.reportRows.filter(r => r.student === student.name);
+      }
+    }
     
     let html = `
       <!DOCTYPE html><html><head><meta charset="utf-8"><title>Attendance Report</title>
@@ -769,6 +878,10 @@
         .footer p { margin: 3px 0; }
         .pct-high { color: #166534; font-weight: bold; }
         .pct-low { color: #991b1b; font-weight: bold; }
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+        .badge.present { background: #dcfce7; color: #166534; }
+        .badge.absent { background: #fef2f2; color: #991b1b; }
+        .badge.leave { background: #fef3c7; color: #92400e; }
         @media print { body { padding: 15px; } .stats-grid .stat-box { break-inside: avoid; } table { page-break-inside: auto; } tr { page-break-inside: avoid; } }
         @media (max-width: 600px) { body { padding: 10px; } .stats-grid { grid-template-columns: 1fr 1fr; } .report-meta { flex-direction: column; gap: 5px; } }
       </style>
@@ -777,14 +890,17 @@
         <div class="report-meta">
           <span class="meta-item"><strong>Date Range:</strong> ${from || 'N/A'} to ${to || 'N/A'}</span>
           <span class="meta-item"><strong>Class:</strong> ${className}</span>
+          <span class="meta-item"><strong>Student:</strong> ${studentName}</span>
           <span class="meta-item"><strong>Total Students:</strong> ${results.length}</span>
         </div>
         <div class="stats-grid">
           <div class="stat-box highlight"><span class="number">${results.length}</span><span class="label">Total Students</span></div>
+          <div class="stat-box"><span class="number">${state.reportTotalDays || results[0]?.totalDays || 0}</span><span class="label">Total Days</span></div>
+          <div class="stat-box"><span class="number">${state.reportTotalHolidays || 0}</span><span class="label">Holidays</span></div>
+          <div class="stat-box highlight"><span class="number">${state.reportTotalDesignatedDays || totalDesignatedDays}</span><span class="label">Designated Days</span></div>
           <div class="stat-box green"><span class="number">${totalPresent}</span><span class="label">Present</span></div>
           <div class="stat-box red"><span class="number">${totalAbsent}</span><span class="label">Absent</span></div>
           <div class="stat-box yellow"><span class="number">${totalLeave}</span><span class="label">Leave</span></div>
-          <div class="stat-box highlight"><span class="number">${totalDesignatedDays}</span><span class="label">Designated Days</span></div>
           <div class="stat-box highlight"><span class="number">${overallAttendance}%</span><span class="label">Overall Attendance</span></div>
         </div>
         <h3 class="section-title">Student Summary</h3>
@@ -802,6 +918,19 @@
             <td><span class="${s.attendancePercentage >= 75 ? 'pct-high' : 'pct-low'}">${s.attendancePercentage}%</span></td>
           </tr>`).join("")}
         </tbody></table>
+        ${detailRows.length > 0 ? `
+          <h3 class="section-title">Detailed Records</h3>
+          <table><thead><tr><th>Roll</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>
+            ${detailRows.map(r => `<tr>
+              <td>${esc(r.roll)}</td>
+              <td>${esc(r.student)}</td>
+              <td>${esc(r.date)}</td>
+              <td>${esc(r.class)}</td>
+              <td><span class="badge ${r.status}">${esc(r.status || '—')}</span></td>
+              <td>${esc(r.remarks || "—")}</td>
+            </tr>`).join("")}
+          </tbody></table>
+        ` : ''}
         <div class="footer"><p>Report generated from <strong>Nous Complex Attendance Portal</strong></p><p>© ${new Date().getFullYear()} Nous Complex • All Rights Reserved</p></div>
       </body></html>
     `;
