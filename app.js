@@ -5,7 +5,23 @@
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const content = $("#page-content");
-  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], reportStudentResults: [], reportDateRange: {}, reportTotalDays: 0, reportTotalHolidays: 0, reportTotalDesignatedDays: 0, recoveryMode: false };
+  const state = { 
+    db: null, 
+    user: null, 
+    profile: null, 
+    teacher: null, 
+    page: "dashboard", 
+    classes: [], 
+    reportRows: [], 
+    reportStudentResults: [], 
+    reportDateRange: {}, 
+    reportTotalDays: 0, 
+    reportTotalHolidays: 0, 
+    reportTotalDesignatedDays: 0, 
+    recoveryMode: false,
+    currentAttendanceDate: null,
+    currentAttendanceClass: null
+  };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
   const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
@@ -86,10 +102,6 @@
   // --- Session Management ---
   async function loadSession() {
     if (sessionLoading) return;
-    // Never show the dashboard while a password-recovery flow is in progress —
-    // the recovery link creates a valid session, but the user hasn't set a new
-    // password yet, so the app must stay on the reset-password modal, not the
-    // dashboard behind it.
     if (state.recoveryMode) { hideLoadingScreen(); return; }
     sessionLoading = true;
     
@@ -124,7 +136,14 @@
       $("#menu-toggle-btn")?.classList.remove("is-hidden");
       
       applyRoleVisibility();
-      await navigate("dashboard");
+      
+      // Restore last page from localStorage
+      const savedPage = localStorage.getItem('nousomplex_last_page');
+      if (savedPage && ['dashboard', 'attendance', 'students', 'classes', 'teachers', 'reports', 'calendar', 'admin-tools'].includes(savedPage)) {
+        await navigate(savedPage);
+      } else {
+        await navigate("dashboard");
+      }
       
       hideLoadingScreen();
       sessionLoading = false;
@@ -261,6 +280,9 @@
   // --- Navigation ---
   async function navigate(page) {
     state.page = page; 
+    // Save current page to localStorage
+    localStorage.setItem('nousomplex_last_page', page);
+    
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
     $("#page-title").textContent = ({ 
       dashboard:"Dashboard", 
@@ -314,29 +336,153 @@
   async function attendance() {
     setTemplate("#attendance-template"); 
     await getClasses(); 
-    $("#attendance-date").value = isoToday(); 
-    $("#attendance-class").innerHTML = classOptions();
+    const savedDate = localStorage.getItem('nousomplex_attendance_date') || isoToday();
+    const savedClass = localStorage.getItem('nousomplex_attendance_class') || "";
+    
+    $("#attendance-date").value = savedDate; 
+    $("#attendance-class").innerHTML = classOptions(savedClass);
     $("#load-roster").onclick = loadRoster; 
     $("#save-attendance").onclick = saveAttendance;
     applyRoleVisibility();
+    
+    // Auto-load roster if there's a saved class
+    if (savedClass) {
+      setTimeout(() => loadRoster(), 300);
+    }
   }
 
   async function loadRoster() {
     const classId = $("#attendance-class").value;
     const date = $("#attendance-date").value;
+    
+    // Save to localStorage for persistence
+    localStorage.setItem('nousomplex_attendance_date', date);
+    localStorage.setItem('nousomplex_attendance_class', classId);
+    state.currentAttendanceDate = date;
+    state.currentAttendanceClass = classId;
+    
     if (!classId || !date) return flash("Choose a class and date.", true);
+    
     const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
     const session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
     const map = Object.fromEntries(existing.map(r => [r.student_id, r]));
+    
+    // Check if admin for edit controls
+    const admin = isAdmin();
+    
     $("#roster").innerHTML = students.length ? 
-      `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${students.map(s => { 
+      `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th>${admin ? '<th>Actions</th>' : ''}</tr></thead><tbody>${students.map(s => { 
         const r = map[s.id] || { status:"present", remarks:"" }; 
-        return `<tr data-student="${s.id}"><td>${esc(s.roll_number)}</td><td>${esc(s.name)}</td><td><select class="status-select"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select></td><td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250"></td></tr>`; 
+        const statuses = ['present', 'absent', 'leave'];
+        const statusLabels = { present: 'Present', absent: 'Absent', leave: 'Leave' };
+        return `<tr data-student="${s.id}" data-status="${r.status}">
+          <td>${esc(s.roll_number)}</td>
+          <td>${esc(s.name)}</td>
+          <td>
+            <select class="status-select" ${admin ? '' : 'disabled'}>
+              ${statuses.map(st => `<option value="${st}" ${r.status === st ? "selected" : ""}>${statusLabels[st]}</option>`).join("")}
+            </select>
+          </td>
+          <td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250" ${admin ? '' : 'disabled'}></td>
+          ${admin ? `<td><button class="text-button edit-record" type="button" style="color:#4f46e5;">Edit</button></td>` : ''}
+        </tr>`; 
       }).join("")}</tbody></table></div>` : 
       empty("No active students exist in this class.");
+    
+    // Add edit functionality for admin
+    if (admin) {
+      $$(".edit-record").forEach(btn => {
+        btn.onclick = function() {
+          const tr = this.closest('tr');
+          const studentId = tr.dataset.student;
+          const currentStatus = tr.dataset.status || 'present';
+          showStatusEditModal(studentId, currentStatus, date, classId);
+        };
+      });
+      
+      // Also allow clicking on the status select to change (for admin)
+      $$(".status-select").forEach(sel => {
+        sel.onchange = function() {
+          const tr = this.closest('tr');
+          const newStatus = this.value;
+          const studentId = tr.dataset.student;
+          tr.dataset.status = newStatus;
+          // Highlight changed row
+          tr.style.background = '#fef3c7';
+          setTimeout(() => { tr.style.background = ''; }, 2000);
+        };
+      });
+    }
+    
     $("#save-attendance").disabled = !students.length;
     applyRoleVisibility();
+  }
+
+  // --- Edit Status Modal ---
+  function showStatusEditModal(studentId, currentStatus, date, classId) {
+    // Create modal overlay
+    const modal = document.createElement('div');
+    modal.className = 'reset-modal show';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:400px;">
+        <h2 style="margin-top:0;">Edit Attendance Status</h2>
+        <p style="color:#6b7280;font-size:14px;">Change the attendance status for this student.</p>
+        <div style="margin:15px 0;">
+          <label style="display:block;font-weight:500;margin-bottom:5px;">Current Status: <strong>${currentStatus}</strong></label>
+          <label style="display:block;font-weight:500;margin-bottom:5px;">New Status:</label>
+          <select id="edit-status-select" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;">
+            <option value="present" ${currentStatus === 'present' ? 'selected' : ''}>Present</option>
+            <option value="absent" ${currentStatus === 'absent' ? 'selected' : ''}>Absent</option>
+            <option value="leave" ${currentStatus === 'leave' ? 'selected' : ''}>Leave</option>
+          </select>
+        </div>
+        <div class="toolbar" style="margin-top:10px;">
+          <button id="edit-status-confirm" class="primary" style="flex:1;">Update Status</button>
+          <button id="edit-status-cancel" class="secondary" style="flex:1;">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector('#edit-status-confirm').onclick = async function() {
+      const newStatus = modal.querySelector('#edit-status-select').value;
+      try {
+        await updateAttendanceStatus(studentId, date, classId, newStatus);
+        flash(`Attendance status updated to ${newStatus}.`);
+        modal.remove();
+        // Reload roster to reflect changes
+        await loadRoster();
+      } catch (err) {
+        flash(err.message, true);
+      }
+    };
+
+    modal.querySelector('#edit-status-cancel').onclick = function() {
+      modal.remove();
+    };
+
+    // Close on click outside
+    modal.onclick = function(e) {
+      if (e.target === modal) modal.remove();
+    };
+  }
+
+  async function updateAttendanceStatus(studentId, date, classId, newStatus) {
+    // Find or create the session
+    let session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
+    if (!session) {
+      session = await api(state.db.from("attendance_sessions").insert({ class_id: classId, attendance_date: date }).select("id").single());
+    }
+    
+    // Update the record
+    await api(state.db.from("attendance_records").upsert({
+      session_id: session.id,
+      student_id: studentId,
+      status: newStatus,
+      remarks: null
+    }, { onConflict: "session_id,student_id" }));
   }
 
   async function saveAttendance() {
@@ -346,9 +492,14 @@
     try {
       let session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
       if (!session) session = await api(state.db.from("attendance_sessions").insert({ class_id:classId, attendance_date:date }).select("id").single());
+      
       const records = [...document.querySelectorAll("#roster tbody tr")].map(row => ({ 
-        session_id:session.id, student_id:row.dataset.student, status:$(".status-select", row).value, remarks:$(".remarks", row).value.trim() || null 
+        session_id:session.id, 
+        student_id:row.dataset.student, 
+        status:$(".status-select", row).value, 
+        remarks:$(".remarks", row).value.trim() || null 
       }));
+      
       await api(state.db.from("attendance_records").upsert(records, { onConflict:"session_id,student_id" })); 
       flash("Attendance saved successfully.");
     } catch (e) { flash(e.message, true); }
@@ -856,7 +1007,6 @@
       return flash("Report downloads are disabled for your account.", true);
     }
     
-    // Respect the "Show" dropdown: summary / detail / both — same modes exportExcel uses.
     const viewMode = document.getElementById('report-view')?.value || 'summary';
     const includeSummary = viewMode === 'summary' || viewMode === 'both';
     const includeDetail = viewMode === 'detail' || viewMode === 'both';
@@ -1335,11 +1485,6 @@
     const overlay = document.getElementById('sidebar-overlay');
     if (sidebar) {
       sidebar.classList.add('open');
-      // Hide hamburger button when sidebar/navbar is open.
-      // Belt-and-suspenders: toggle the .is-hidden class AND force an inline
-      // !important style. Inline !important always wins over any stylesheet
-      // rule (including the mobile media query's `display: flex !important`),
-      // so this hides reliably even if cached/older CSS is still in play.
       const menuToggle = document.getElementById('menu-toggle-btn');
       if (menuToggle) {
         menuToggle.classList.add('is-hidden');
@@ -1355,8 +1500,6 @@
     const overlay = document.getElementById('sidebar-overlay');
     if (sidebar) {
       sidebar.classList.remove('open');
-      // Show hamburger button again when sidebar/navbar is closed (mobile only;
-      // on desktop the button stays hidden via the >=769px media query anyway).
       const menuToggle = document.getElementById('menu-toggle-btn');
       if (menuToggle && window.innerWidth <= 768) {
         menuToggle.classList.remove('is-hidden');
@@ -1388,11 +1531,6 @@
   function handlePasswordReset() {
     if (!state.db) return;
 
-    // Supabase's reset-password link can hand back the recovery info in three
-    // different ways depending on project settings, so we check all of them:
-    //   1) Hash fragment (default implicit flow): #access_token=...&type=recovery
-    //   2) Query string (some configs / older links): ?access_token=...&type=recovery
-    //   3) PKCE flow: ?code=xxxxx  (needs exchangeCodeForSession)
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const queryParams = new URLSearchParams(window.location.search);
 
@@ -1440,7 +1578,6 @@
 
   // --- Init ---
   function init() {
-    // Show loading screen immediately
     const loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
       loadingScreen.style.display = 'flex';
@@ -1450,13 +1587,16 @@
       state.db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
     }
     
-    // Set up event listeners
     $("#auth-form").onsubmit = signIn; 
     $("#signup-button").onclick = signUp;
     $("#forgot-password-btn").onclick = forgotPassword;
     $("#signout").onclick = async () => { 
       await state.db.auth.signOut(); 
       cachedClasses = null; 
+      // Clear stored page when signing out
+      localStorage.removeItem('nousomplex_last_page');
+      localStorage.removeItem('nousomplex_attendance_date');
+      localStorage.removeItem('nousomplex_attendance_class');
       showAuth(); 
     };
     
@@ -1466,8 +1606,6 @@
       $("#reset-password").value = "";
       $("#reset-password-confirm").value = "";
       $("#reset-message").textContent = "";
-      // Cancelling a recovery flow should not leave the user silently signed
-      // in without having changed their password — sign out and go back to login.
       if (state.recoveryMode) {
         state.recoveryMode = false;
         try { await state.db.auth.signOut(); } catch (e) { /* ignore */ }
@@ -1475,9 +1613,6 @@
       }
     };
     
-    // Listen for auth state changes for password recovery (covers the case
-    // where supabase-js auto-detects the recovery session from the URL itself).
-    // Registered BEFORE handlePasswordReset() runs so it's never missed.
     if (state.db) {
       state.db.auth.onAuthStateChange((event) => {
         if (event === "PASSWORD_RECOVERY") {
@@ -1488,7 +1623,6 @@
       });
     }
 
-    // Handle password reset from email link (manual parsing of hash/query/code)
     handlePasswordReset();
     
     // Mobile Sidebar Toggle
@@ -1511,10 +1645,6 @@
     if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSidebar(); });
     window.addEventListener('resize', function() {
-      // Only manage the hamburger/sidebar once the user is actually logged in.
-      // Mobile browsers fire 'resize' when the on-screen keyboard opens/closes
-      // (e.g. tapping the email field on the login screen), and without this
-      // guard that was incorrectly un-hiding the hamburger on the auth screen.
       const appEl = document.getElementById('app');
       const loggedIn = appEl && !appEl.classList.contains('hidden');
       if (!loggedIn) return;
@@ -1523,9 +1653,7 @@
         sidebar.classList.remove('open');
         if (overlay) overlay.classList.remove('show');
         document.body.style.overflow = '';
-        // Hamburger stays hidden on desktop via the >=769px CSS media query.
       }
-      // Ensure hamburger visibility matches sidebar state when resizing back to mobile
       if (window.innerWidth <= 768) {
         const menuToggleBtn = document.getElementById('menu-toggle-btn');
         if (menuToggleBtn && sidebar) {
@@ -1551,7 +1679,6 @@
       if (goButton) { const page = goButton.dataset.go; if (page) navigate(page); }
     });
     
-    // Check if configured
     if (configured) {
       setTimeout(() => {
         loadSession();
