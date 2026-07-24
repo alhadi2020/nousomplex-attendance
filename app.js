@@ -458,7 +458,10 @@
     catch (err) { flash(err.message, true); }
   }
 
-  // --- Reports ---
+  // ============================================================
+  // ===== REPORTS WITH COMPREHENSIVE CALCULATIONS =====
+  // ============================================================
+
   async function reports() {
     setTemplate("#reports-template"); 
     await getClasses(); 
@@ -485,66 +488,208 @@
     applyReportView();
   }
 
+  // Helper: Check if a date is a weekend (Saturday or Sunday)
+  function isWeekend(dateStr) {
+    const d = new Date(dateStr);
+    return d.getDay() === 0 || d.getDay() === 6;
+  }
+
+  // Helper: Check if a date is a holiday (from holidays table)
+  async function isHoliday(dateStr, classId) {
+    try {
+      let query = state.db.from("holidays").select("id").eq("date", dateStr);
+      if (classId) query = query.eq("class_id", classId);
+      else query = query.is("class_id", null);
+      const result = await api(query.maybeSingle());
+      return !!result;
+    } catch { return false; }
+  }
+
+  // Helper: Get all dates in a range
+  function getDateRangeArray(from, to) {
+    const dates = [];
+    const current = new Date(from);
+    const end = new Date(to);
+    while (current <= end) {
+      dates.push(current.toISOString().slice(0, 10));
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  }
+
+  // Comprehensive runReport with full calculations
   async function runReport() {
     const from = document.getElementById('report-from').value;
     const to = document.getElementById('report-to').value;
     const classId = document.getElementById('report-class').value;
     const studentId = document.getElementById('report-student').value;
+    
     if (!from || !to || from > to) return flash("Choose a valid date range.", true);
-    let q = state.db.from("attendance_sessions").select("id,attendance_date,class_id,classes(name,section)")
-      .gte("attendance_date", from).lte("attendance_date", to).order("attendance_date");
-    if (classId) q = q.eq("class_id", classId);
-    const sessions = await api(q);
-    const ids = sessions.map(s => s.id);
-    let records = ids.length ? await api(state.db.from("attendance_records")
-      .select("id,session_id,student_id,status,remarks,students(name,roll_number)")
-      .in("session_id", ids)) : [];
+    
+    await getClasses();
+    
+    // Get all students in the class (or all classes)
+    let studentQuery = state.db.from("students").select("id,name,roll_number,class_id,classes(name,section)").eq("active", true);
+    if (classId) studentQuery = studentQuery.eq("class_id", classId);
+    const students = await api(studentQuery.order("roll_number"));
+    
+    // Get all attendance sessions in date range
+    let sessionQuery = state.db.from("attendance_sessions").select("id,attendance_date,class_id")
+      .gte("attendance_date", from).lte("attendance_date", to);
+    if (classId) sessionQuery = sessionQuery.eq("class_id", classId);
+    const sessions = await api(sessionQuery);
+    const sessionIds = sessions.map(s => s.id);
+    
+    // Get attendance records
+    let records = sessionIds.length ? await api(state.db.from("attendance_records")
+      .select("id,session_id,student_id,status,remarks")
+      .in("session_id", sessionIds)) : [];
     if (studentId) records = records.filter(r => r.student_id === studentId);
+    
+    // Get holidays
     let holidayQuery = state.db.from("holidays").select("date,class_id").gte("date", from).lte("date", to);
-    let designatedQuery = state.db.from("designated_days").select("date,class_id").gte("date", from).lte("date", to);
-    if (classId) {
-      holidayQuery = holidayQuery.eq("class_id", classId);
-      designatedQuery = designatedQuery.eq("class_id", classId);
-    }
+    if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
     const holidays = await api(holidayQuery);
-    const designatedDays = await api(designatedQuery);
     const holidayDates = new Set(holidays.map(h => h.date));
-    const designatedDates = new Set(designatedDays.map(d => d.date));
-    const bySession = Object.fromEntries(sessions.map(s => [s.id, s]));
-    state.reportRows = records.map(r => {
-      const session = bySession[r.session_id];
-      const date = session?.attendance_date || '';
+    
+    // Get all dates in range
+    const allDates = getDateRangeArray(from, to);
+    
+    // Calculate for each student
+    const studentResults = students.map(student => {
+      // Get records for this student
+      const studentRecords = records.filter(r => r.student_id === student.id);
+      
+      // Create a map of date -> status for quick lookup
+      const recordMap = {};
+      studentRecords.forEach(r => {
+        const session = sessions.find(s => s.id === r.session_id);
+        if (session) recordMap[session.attendance_date] = r.status;
+      });
+      
+      let totalDays = 0;
+      let holidayCount = 0;
+      let designatedDays = 0;
+      let presentCount = 0;
+      let absentCount = 0;
+      let leaveCount = 0;
+      
+      allDates.forEach(date => {
+        // Check if date is weekend or holiday
+        const isWeekendDay = isWeekend(date);
+        const isHolidayDay = holidayDates.has(date);
+        const isHolidayOrWeekend = isWeekendDay || isHolidayDay;
+        
+        // Check if this date has a record
+        const status = recordMap[date];
+        
+        if (isHolidayOrWeekend) {
+          // This is a holiday/weekend - count as holiday
+          holidayCount++;
+        } else {
+          // This is a designated day
+          designatedDays++;
+          totalDays++;
+          
+          // Count attendance status
+          if (status === 'present') presentCount++;
+          else if (status === 'absent') absentCount++;
+          else if (status === 'leave') leaveCount++;
+          // If no status, it's unmarked
+        }
+      });
+      
+      // Calculate attendance percentage
+      const attendancePercentage = designatedDays > 0 ? Math.round((presentCount / designatedDays) * 100) : 0;
+      
       return {
-        id: r.id, date: date, class: session?.classes?.name ? `${session.classes.name} ${session.classes.section || ''}`.trim() : '',
-        student: r.students?.name || '', roll: r.students?.roll_number || '', status: r.status, remarks: r.remarks || '',
-        isHoliday: holidayDates.has(date), isDesignated: designatedDates.has(date)
+        id: student.id,
+        name: student.name,
+        roll: student.roll_number || 'N/A',
+        class: student.classes ? `${student.classes.name}${student.classes.section ? ` — ${student.classes.section}` : ''}` : 'N/A',
+        totalDays,
+        holidayCount,
+        designatedDays,
+        presentCount,
+        absentCount,
+        leaveCount,
+        attendancePercentage,
+        unmarked: designatedDays - (presentCount + absentCount + leaveCount)
       };
     });
-    state.reportRows.sort((a, b) => (a.roll || '').localeCompare(b.roll || '', undefined, { numeric: true }));
-    const present = state.reportRows.filter(r => r.status === "present").length;
-    const absent = state.reportRows.filter(r => r.status === "absent").length;
-    const leave = state.reportRows.filter(r => r.status === "leave").length;
-    const totalHolidays = state.reportRows.filter(r => r.isHoliday).length;
-    const totalDesignated = state.reportRows.filter(r => r.isDesignated).length;
+    
+    // Store for export
+    state.reportStudentResults = studentResults;
+    state.reportDateRange = { from, to };
+    
+    // Display summary stats
+    const totalStudents = studentResults.length;
+    const totalDesignatedDays = studentResults.reduce((sum, s) => sum + s.designatedDays, 0);
+    const totalPresent = studentResults.reduce((sum, s) => sum + s.presentCount, 0);
+    const totalAbsent = studentResults.reduce((sum, s) => sum + s.absentCount, 0);
+    const totalLeave = studentResults.reduce((sum, s) => sum + s.leaveCount, 0);
+    const totalHolidays = studentResults.reduce((sum, s) => sum + s.holidayCount, 0) / totalStudents;
+    const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
+    
     document.getElementById('report-summary').innerHTML = `
-      <article><span>Present</span><strong>${present}</strong></article>
-      <article><span>Absent</span><strong>${absent}</strong></article>
-      <article><span>Leave</span><strong>${leave}</strong></article>
-      <article><span>Holidays</span><strong>${totalHolidays}</strong></article>
-      <article><span>Designated Days</span><strong>${totalDesignated}</strong></article>
+      <article><span>Total Students</span><strong>${totalStudents}</strong></article>
+      <article><span>Total Days</span><strong>${allDates.length}</strong></article>
+      <article><span>Holidays</span><strong>${Math.round(totalHolidays)}</strong></article>
+      <article><span>Designated Days</span><strong>${totalDesignatedDays}</strong></article>
+      <article><span>Present</span><strong>${totalPresent}</strong></article>
+      <article><span>Absent</span><strong>${totalAbsent}</strong></article>
+      <article><span>Leave</span><strong>${totalLeave}</strong></article>
+      <article><span>Attendance %</span><strong>${overallAttendance}%</strong></article>
     `;
+    
+    // Render student summary table
+    const summaryEl = document.getElementById('student-summary-table');
+    if (summaryEl) {
+      summaryEl.innerHTML = studentResults.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Roll No.</th>
+                <th>Student</th>
+                <th>Class</th>
+                <th>Total Days</th>
+                <th>Holidays</th>
+                <th>Designated Days</th>
+                <th>Present</th>
+                <th>Absent</th>
+                <th>Leave</th>
+                <th>Attendance %</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${studentResults.map(s => `
+                <tr>
+                  <td>${esc(s.roll)}</td>
+                  <td>${esc(s.name)}</td>
+                  <td>${esc(s.class)}</td>
+                  <td>${s.totalDays}</td>
+                  <td>${s.holidayCount}</td>
+                  <td>${s.designatedDays}</td>
+                  <td style="color:#166534;font-weight:600;">${s.presentCount}</td>
+                  <td style="color:#991b1b;">${s.absentCount}</td>
+                  <td style="color:#92400e;">${s.leaveCount}</td>
+                  <td><strong style="color:${s.attendancePercentage >= 75 ? '#166534' : '#991b1b'};">${s.attendancePercentage}%</strong></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : empty("No students found.");
+    }
+    
+    // Detailed records (existing functionality)
     const admin = isAdmin();
     document.getElementById('report-table').innerHTML = state.reportRows.length ? 
-      `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th>${admin ? '<th>Holiday</th><th>Designated</th>' : ''}</tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td>${admin ? `<select class="status-edit" data-id="${r.id}"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select>` : `<span class="status ${r.status}">${esc(r.status)}</span>`}</td><td>${esc(r.remarks || "—")}</td>${admin ? `<td>${r.isHoliday ? '✅' : '—'}</td><td>${r.isDesignated ? '⭐' : '—'}</td>` : ''}</tr>`).join("")}</tbody></table></div>` : 
+      `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td><span class="status ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : 
       empty("No attendance records match this report.");
-    if (admin) document.querySelectorAll(".status-edit").forEach(sel => sel.onchange = () => updateRecordStatus(sel.dataset.id, sel.value));
-    renderStudentSummary();
+    
     applyReportView();
-  }
-
-  async function updateRecordStatus(id, status) {
-    try { await api(state.db.from("attendance_records").update({ status }).eq("id", id)); flash("Attendance status updated."); await runReport(); }
-    catch (err) { flash(err.message, true); }
   }
 
   function applyReportView() {
@@ -553,49 +698,74 @@
     $("#detail-section").style.display = view === "summary" ? "none" : "";
   }
 
-  function computeStudentSummary() {
-    const map = new Map();
-    state.reportRows.forEach(r => {
-      const key = r.roll || r.student;
-      if (!map.has(key)) map.set(key, { student:r.student, roll:r.roll, present:0, absent:0, leave:0 });
-      const entry = map.get(key); entry[r.status] = (entry[r.status] || 0) + 1;
-    });
-    return [...map.values()].map(e => { const total = e.present + e.absent + e.leave; return { ...e, total, pct: total ? Math.round((e.present / total) * 100) : 0 }; }).sort((a, b) => (a.roll || "").localeCompare(b.roll || "", undefined, { numeric:true }));
-  }
-
-  function renderStudentSummary() {
-    const rows = computeStudentSummary();
-    const el = $("#student-summary-table"); if (!el) return;
-    el.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total marked</th><th>Attendance %</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}</tbody></table></div>` : empty("No attendance records match this report.");
-  }
-
-  function detailSheetData() { return XLSX.utils.json_to_sheet(state.reportRows.map(r => ({ "Roll No.":r.roll, Student:r.student, Date:r.date, Class:r.class, Status:r.status, Remarks:r.remarks }))); }
-  function summarySheetData() { return XLSX.utils.json_to_sheet(computeStudentSummary().map(r => ({ "Roll No.":r.roll, Student:r.student, Present:r.present, Absent:r.absent, Leave:r.leave, "Total marked":r.total, "Attendance %":r.pct }))); }
-
   function exportExcel(mode = "both") {
-    if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
-    if (!(isAdmin() || state.teacher?.can_export !== false)) return flash("Report downloads are disabled for your account.", true);
+    if (!state.reportStudentResults || state.reportStudentResults.length === 0) {
+      return flash("Run a report with data before exporting.", true);
+    }
+    if (!(isAdmin() || state.teacher?.can_export !== false)) {
+      return flash("Report downloads are disabled for your account.", true);
+    }
     const book = XLSX.utils.book_new();
-    if (mode === "both" || mode === "detail") XLSX.utils.book_append_sheet(book, detailSheetData(), "Attendance");
-    if (mode === "both" || mode === "summary") XLSX.utils.book_append_sheet(book, summarySheetData(), "Summary by student");
+    
+    // Summary sheet
+    const summaryData = state.reportStudentResults.map(s => ({
+      "Roll No.": s.roll,
+      "Student": s.name,
+      "Class": s.class,
+      "Total Days": s.totalDays,
+      "Holidays": s.holidayCount,
+      "Designated Days": s.designatedDays,
+      "Present": s.presentCount,
+      "Absent": s.absentCount,
+      "Leave": s.leaveCount,
+      "Attendance %": s.attendancePercentage + '%'
+    }));
+    
+    XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(summaryData), "Summary");
+    
+    if (mode === "both" || mode === "detail") {
+      // Detailed records sheet
+      const detailData = state.reportRows.map(r => ({
+        "Roll No.": r.roll,
+        "Student": r.student,
+        "Date": r.date,
+        "Class": r.class,
+        "Status": r.status,
+        "Remarks": r.remarks
+      }));
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(detailData), "Detailed");
+    }
+    
     const suffix = mode === "both" ? "" : `-${mode}`;
     XLSX.writeFile(book, `attendance-report${suffix}-${isoToday()}.xlsx`);
   }
 
-  // --- PDF Export ---
+  // --- PDF Export with Comprehensive Data ---
   function exportPDF() {
-    if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
-    if (!(isAdmin() || state.teacher?.can_export !== false)) return flash("Report downloads are disabled for your account.", true);
-    const rows = computeStudentSummary();
-    const fromDate = document.getElementById('report-from')?.value || '';
-    const toDate = document.getElementById('report-to')?.value || '';
+    if (!state.reportStudentResults || state.reportStudentResults.length === 0) {
+      return flash("Run a report with data before exporting.", true);
+    }
+    if (!(isAdmin() || state.teacher?.can_export !== false)) {
+      return flash("Report downloads are disabled for your account.", true);
+    }
+    
+    const results = state.reportStudentResults;
+    const { from, to } = state.reportDateRange || {};
     const classFilter = document.getElementById('report-class')?.value || '';
     const className = classFilter ? state.classes.find(c => c.id === classFilter)?.name || '' : 'All Classes';
+    
+    // Calculate totals
+    const totalDesignatedDays = results.reduce((sum, s) => sum + s.designatedDays, 0);
+    const totalPresent = results.reduce((sum, s) => sum + s.presentCount, 0);
+    const totalAbsent = results.reduce((sum, s) => sum + s.absentCount, 0);
+    const totalLeave = results.reduce((sum, s) => sum + s.leaveCount, 0);
+    const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
+    
     let html = `
       <!DOCTYPE html><html><head><meta charset="utf-8"><title>Attendance Report</title>
       <style>
         * { box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; padding: 30px; color: #1a1a2e; max-width: 1000px; margin: 0 auto; background: #ffffff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; padding: 30px; color: #1a1a2e; max-width: 1100px; margin: 0 auto; background: #ffffff; }
         .header { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 15px; margin-bottom: 20px; }
         .header h1 { font-size: 28px; color: #1a1a2e; margin: 0; }
         .header h1 span { color: #4f46e5; }
@@ -617,56 +787,61 @@
         .stats-grid .stat-box.yellow { background: #fefce8; border-color: #fde047; }
         .stats-grid .stat-box.yellow .number { color: #854d0e; }
         .section-title { font-size: 18px; color: #1a1a2e; margin: 25px 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
-        table th { background: #f1f5f9; color: #1a1a2e; font-weight: 600; padding: 10px 12px; text-align: left; border-bottom: 2px solid #e2e8f0; }
-        table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+        table th { background: #f1f5f9; color: #1a1a2e; font-weight: 600; padding: 8px 10px; text-align: left; border-bottom: 2px solid #e2e8f0; }
+        table td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; }
         table tr:nth-child(even) { background: #fafafa; }
-        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; }
-        .badge.present { background: #dcfce7; color: #166534; }
-        .badge.absent { background: #fef2f2; color: #991b1b; }
-        .badge.leave { background: #fef3c7; color: #92400e; }
         .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 15px; }
         .footer p { margin: 3px 0; }
+        .pct-high { color: #166534; font-weight: bold; }
+        .pct-low { color: #991b1b; font-weight: bold; }
         @media print { body { padding: 15px; } .stats-grid .stat-box { break-inside: avoid; } table { page-break-inside: auto; } tr { page-break-inside: avoid; } }
         @media (max-width: 600px) { body { padding: 10px; } .stats-grid { grid-template-columns: 1fr 1fr; } .report-meta { flex-direction: column; gap: 5px; } }
       </style>
       </head><body>
         <div class="header"><h1>Nous <span>Complex</span></h1><h2>Attendance Report</h2><p>Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
         <div class="report-meta">
-          <span class="meta-item"><strong>Date Range:</strong> ${fromDate} to ${toDate}</span>
+          <span class="meta-item"><strong>Date Range:</strong> ${from || 'N/A'} to ${to || 'N/A'}</span>
           <span class="meta-item"><strong>Class:</strong> ${className}</span>
-          <span class="meta-item"><strong>Total Students:</strong> ${rows.length}</span>
-          <span class="meta-item"><strong>Total Records:</strong> ${state.reportRows.length}</span>
+          <span class="meta-item"><strong>Total Students:</strong> ${results.length}</span>
         </div>
         <div class="stats-grid">
-          <div class="stat-box green"><span class="number">${state.reportRows.filter(r => r.status === "present").length}</span><span class="label">Present</span></div>
-          <div class="stat-box red"><span class="number">${state.reportRows.filter(r => r.status === "absent").length}</span><span class="label">Absent</span></div>
-          <div class="stat-box yellow"><span class="number">${state.reportRows.filter(r => r.status === "leave").length}</span><span class="label">Leave</span></div>
-          <div class="stat-box highlight"><span class="number">${state.reportRows.filter(r => r.isHoliday).length}</span><span class="label">Holidays</span></div>
-          <div class="stat-box highlight"><span class="number">${state.reportRows.filter(r => r.isDesignated).length}</span><span class="label">Designated Days</span></div>
+          <div class="stat-box highlight"><span class="number">${results.length}</span><span class="label">Total Students</span></div>
+          <div class="stat-box green"><span class="number">${totalPresent}</span><span class="label">Present</span></div>
+          <div class="stat-box red"><span class="number">${totalAbsent}</span><span class="label">Absent</span></div>
+          <div class="stat-box yellow"><span class="number">${totalLeave}</span><span class="label">Leave</span></div>
+          <div class="stat-box highlight"><span class="number">${totalDesignatedDays}</span><span class="label">Designated Days</span></div>
+          <div class="stat-box highlight"><span class="number">${overallAttendance}%</span><span class="label">Overall Attendance</span></div>
         </div>
         <h3 class="section-title">Student Summary</h3>
-        <table><thead><tr><th>Roll No.</th><th>Student</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total</th><th>Attendance %</th></tr></thead><tbody>
-          ${rows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}
-        </tbody></table>
-        <h3 class="section-title">Detailed Records</h3>
-        <table><thead><tr><th>Roll</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>
-          ${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td><span class="badge ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}
+        <table><thead><tr><th>Roll</th><th>Student</th><th>Class</th><th>Total Days</th><th>Holidays</th><th>Designated</th><th>Present</th><th>Absent</th><th>Leave</th><th>Attendance %</th></tr></thead><tbody>
+          ${results.map(s => `<tr>
+            <td>${esc(s.roll)}</td>
+            <td>${esc(s.name)}</td>
+            <td>${esc(s.class)}</td>
+            <td>${s.totalDays}</td>
+            <td>${s.holidayCount}</td>
+            <td>${s.designatedDays}</td>
+            <td>${s.presentCount}</td>
+            <td>${s.absentCount}</td>
+            <td>${s.leaveCount}</td>
+            <td><span class="${s.attendancePercentage >= 75 ? 'pct-high' : 'pct-low'}">${s.attendancePercentage}%</span></td>
+          </tr>`).join("")}
         </tbody></table>
         <div class="footer"><p>Report generated from <strong>Nous Complex Attendance Portal</strong></p><p>© ${new Date().getFullYear()} Nous Complex • All Rights Reserved</p></div>
       </body></html>
     `;
+    
     const win = window.open('', '_blank', 'width=1000,height=800,scrollbars=yes');
     if (win) { win.document.write(html); win.document.close(); setTimeout(() => { win.print(); }, 800); } 
     else { flash("Please allow popups to export PDF.", true); }
   }
 
   // ============================================================
-  // ===== CALENDAR VIEW - Interactive with Click to Mark =====
+  // ===== CALENDAR VIEW =====
   // ============================================================
 
   let calendarDate = new Date();
-  let selectedDate = null;
 
   async function calendar() {
     if (!isAdmin()) return navigate("dashboard");
@@ -678,21 +853,11 @@
     filter.innerHTML = `<option value="">All Classes</option>` + 
       state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
     
-    // Set up navigation
-    document.getElementById('calendar-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalendar(); };
-    document.getElementById('calendar-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalendar(); };
+    filter.onchange = renderCalendar;
     document.getElementById('calendar-today').onclick = () => { calendarDate = new Date(); renderCalendar(); };
-    
-    // Action buttons
-    document.getElementById('mark-holiday').onclick = () => markSelectedDate('holiday');
-    document.getElementById('mark-designated').onclick = () => markSelectedDate('designated');
-    document.getElementById('clear-selected').onclick = clearSelectedDate;
     document.getElementById('calendar-detail-close').onclick = () => {
       document.getElementById('calendar-details').style.display = 'none';
     };
-    
-    // Class filter change
-    filter.onchange = renderCalendar;
     
     await renderCalendar();
     applyRoleVisibility();
@@ -715,21 +880,12 @@
     const monthStart = new Date(year, month, 1).toISOString().slice(0, 10);
     const monthEnd = new Date(year, month + 1, 0).toISOString().slice(0, 10);
     
+    // Get holidays
     let holidayQuery = state.db.from("holidays").select("date,class_id,reason").gte("date", monthStart).lte("date", monthEnd);
-    let designatedQuery = state.db.from("designated_days").select("date,class_id,reason").gte("date", monthStart).lte("date", monthEnd);
-    
-    if (classId) {
-      holidayQuery = holidayQuery.eq("class_id", classId);
-      designatedQuery = designatedQuery.eq("class_id", classId);
-    }
-    
+    if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
     const holidays = await api(holidayQuery);
-    const designatedDays = await api(designatedQuery);
-    
     const holidayMap = {};
-    const designatedMap = {};
     holidays.forEach(h => { if (!holidayMap[h.date]) holidayMap[h.date] = []; holidayMap[h.date].push(h); });
-    designatedDays.forEach(d => { if (!designatedMap[d.date]) designatedMap[d.date] = []; designatedMap[d.date].push(d); });
     
     const grid = document.getElementById('calendar-grid');
     let html = `<table><thead><tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr></thead><tbody>`;
@@ -742,34 +898,31 @@
     while (day <= daysInMonth) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const isToday = dateStr === todayStr;
-      const isHoliday = holidayMap[dateStr] && holidayMap[dateStr].length > 0;
-      const isDesignated = designatedMap[dateStr] && designatedMap[dateStr].length > 0;
-      const isSelected = dateStr === selectedDate;
+      const isWeekendDay = isWeekend(dateStr);
+      const isHolidayDay = holidayMap[dateStr] && holidayMap[dateStr].length > 0;
+      const isDesignated = !isWeekendDay && !isHolidayDay;
       
       let cellClass = 'calendar-day';
       if (isToday) cellClass += ' today';
-      if (isHoliday && isDesignated) cellClass += ' both';
-      else if (isHoliday) cellClass += ' holiday';
+      if (isWeekendDay && isHolidayDay) cellClass += ' both';
+      else if (isWeekendDay || isHolidayDay) cellClass += ' weekend';
       else if (isDesignated) cellClass += ' designated';
-      if (isSelected) cellClass += ' selected';
       
       let tooltip = `${day} ${monthNames[month]} ${year}`;
       let detailData = [];
-      if (isHoliday) {
+      if (isWeekendDay) tooltip += `\nWeekend (Saturday/Sunday)`;
+      if (isHolidayDay) {
         const reasons = holidayMap[dateStr].map(h => h.reason || 'Holiday').join(', ');
         tooltip += `\nHoliday: ${reasons}`;
         detailData.push({ type: 'Holiday', reason: reasons, items: holidayMap[dateStr] });
       }
       if (isDesignated) {
-        const reasons = designatedMap[dateStr].map(d => d.reason || 'Designated Day').join(', ');
-        tooltip += `\nDesignated: ${reasons}`;
-        detailData.push({ type: 'Designated Day', reason: reasons, items: designatedMap[dateStr] });
+        tooltip += `\nDesignated Day`;
+        detailData.push({ type: 'Designated Day', reason: 'Default designated day' });
       }
       
-      html += `<td class="${cellClass}" data-date="${dateStr}" data-detail='${JSON.stringify(detailData).replace(/'/g, "&#39;")}' title="${esc(tooltip)}" onclick="window.selectCalendarDate && window.selectCalendarDate('${dateStr}')">
+      html += `<td class="${cellClass}" data-date="${dateStr}" data-detail='${JSON.stringify(detailData).replace(/'/g, "&#39;")}' title="${esc(tooltip)}">
         <span class="day-number">${day}</span>
-        ${isHoliday ? '<span class="badge-indicator">🎉</span>' : ''}
-        ${isDesignated ? '<span class="badge-indicator">⭐</span>' : ''}
       </td>`;
       
       day++; col++;
@@ -780,143 +933,36 @@
     html += `</tr></tbody></table>`;
     grid.innerHTML = html;
     
-    // Update selected info
-    if (selectedDate) {
-      document.getElementById('selected-info').style.display = 'block';
-      document.getElementById('selected-date-text').textContent = selectedDate;
-      // Check if date has existing events
-      const isHoliday = holidayMap[selectedDate] && holidayMap[selectedDate].length > 0;
-      const isDesignated = designatedMap[selectedDate] && designatedMap[selectedDate].length > 0;
-      let infoText = selectedDate;
-      if (isHoliday) infoText += ' 🎉 Holiday';
-      if (isDesignated) infoText += ' ⭐ Designated';
-      document.getElementById('selected-date-text').textContent = infoText;
-    } else {
-      document.getElementById('selected-info').style.display = 'none';
-    }
-    
     // Add click handlers
     document.querySelectorAll('.calendar-day').forEach(cell => {
       cell.addEventListener('click', function() {
         const date = this.dataset.date;
-        selectedDate = date;
-        renderCalendar();
-        showDateDetails(date);
+        const detailData = JSON.parse(this.dataset.detail || '[]');
+        showDateDetails(date, detailData);
       });
     });
   }
 
-  // Make selectCalendarDate available globally for onclick
-  window.selectCalendarDate = function(date) {
-    selectedDate = date;
-    renderCalendar();
-    showDateDetails(date);
-  };
-
-  function showDateDetails(date) {
+  function showDateDetails(date, details) {
     const detailContainer = document.getElementById('calendar-details');
     const detailDate = document.getElementById('calendar-detail-date');
     const detailContent = document.getElementById('calendar-detail-content');
     
-    // Get details from the clicked cell
-    const cell = document.querySelector(`.calendar-day[data-date="${date}"]`);
-    if (!cell) { detailContainer.style.display = 'none'; return; }
-    
-    const detailData = JSON.parse(cell.dataset.detail || '[]');
     detailContainer.style.display = 'block';
     detailDate.textContent = `📅 ${date}`;
     
-    if (detailData.length > 0) {
+    if (details && details.length > 0) {
       let html = '';
-      detailData.forEach(d => {
-        html += `<div style="margin:5px 0; padding:8px 12px; background:white; border-radius:6px; border-left:4px solid ${d.type === 'Holiday' ? '#f59e0b' : '#3b82f6'};">
+      details.forEach(d => {
+        const borderColor = d.type === 'Holiday' ? '#f59e0b' : d.type === 'Designated Day' ? '#3b82f6' : '#6b7280';
+        html += `<div style="margin:5px 0; padding:8px 12px; background:white; border-radius:6px; border-left:4px solid ${borderColor};">
           <strong>${d.type}</strong>
-          <span style="color:#6b7280; margin-left:10px;">${esc(d.reason)}</span>
+          <span style="color:#6b7280; margin-left:10px;">${esc(d.reason || '')}</span>
         </div>`;
       });
       detailContent.innerHTML = html;
     } else {
-      detailContent.innerHTML = '<p class="muted" style="margin:0;">No events on this date. Click "Mark Holiday" or "Mark Designated" to add one.</p>';
-    }
-  }
-
-  async function markSelectedDate(type) {
-    if (!selectedDate) {
-      flash("Please click on a date first to select it.", true);
-      return;
-    }
-    
-    const classId = document.getElementById('calendar-class-filter')?.value || null;
-    const table = type === 'holiday' ? 'holidays' : 'designated_days';
-    const label = type === 'holiday' ? 'Holiday' : 'Designated Day';
-    
-    // Check if already exists
-    let query = state.db.from(table).select("id").eq("date", selectedDate);
-    if (classId) query = query.eq("class_id", classId);
-    else query = query.is("class_id", null);
-    const existing = await api(query.maybeSingle());
-    
-    if (existing) {
-      flash(`${label} already exists for this date.`, true);
-      return;
-    }
-    
-    try {
-      await api(state.db.from(table).insert({ 
-        class_id: classId, 
-        date: selectedDate, 
-        reason: prompt(`Enter reason for ${label}:`, label) || label
-      }));
-      flash(`${label} marked for ${selectedDate}.`);
-      renderCalendar();
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function clearSelectedDate() {
-    if (!selectedDate) {
-      flash("Please click on a date first to select it.", true);
-      return;
-    }
-    
-    const classId = document.getElementById('calendar-class-filter')?.value || null;
-    
-    // Check both tables
-    let holidayQuery = state.db.from("holidays").select("id").eq("date", selectedDate);
-    let designatedQuery = state.db.from("designated_days").select("id").eq("date", selectedDate);
-    
-    if (classId) {
-      holidayQuery = holidayQuery.eq("class_id", classId);
-      designatedQuery = designatedQuery.eq("class_id", classId);
-    } else {
-      holidayQuery = holidayQuery.is("class_id", null);
-      designatedQuery = designatedQuery.is("class_id", null);
-    }
-    
-    const holiday = await api(holidayQuery.maybeSingle());
-    const designated = await api(designatedQuery.maybeSingle());
-    
-    if (!holiday && !designated) {
-      flash("No events found for this date.", true);
-      return;
-    }
-    
-    let msg = "Remove ";
-    if (holiday) msg += "Holiday";
-    if (holiday && designated) msg += " & ";
-    if (designated) msg += "Designated Day";
-    msg += ` for ${selectedDate}?`;
-    
-    if (!confirm(msg)) return;
-    
-    try {
-      if (holiday) await api(state.db.from("holidays").delete().eq("id", holiday.id));
-      if (designated) await api(state.db.from("designated_days").delete().eq("id", designated.id));
-      flash(`Cleared events for ${selectedDate}.`);
-      renderCalendar();
-    } catch (err) {
-      flash(err.message, true);
+      detailContent.innerHTML = '<p class="muted" style="margin:0;">No events on this date.</p>';
     }
   }
 
