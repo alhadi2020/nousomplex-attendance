@@ -5,7 +5,7 @@
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const content = $("#page-content");
-  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], reportStudentResults: [], reportDateRange: {}, reportTotalDays: 0, reportTotalHolidays: 0, reportTotalDesignatedDays: 0 };
+  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], reportStudentResults: [], reportDateRange: {}, reportTotalDays: 0, reportTotalHolidays: 0, reportTotalDesignatedDays: 0, recoveryMode: false };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
   const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
@@ -86,6 +86,11 @@
   // --- Session Management ---
   async function loadSession() {
     if (sessionLoading) return;
+    // Never show the dashboard while a password-recovery flow is in progress —
+    // the recovery link creates a valid session, but the user hasn't set a new
+    // password yet, so the app must stay on the reset-password modal, not the
+    // dashboard behind it.
+    if (state.recoveryMode) { hideLoadingScreen(); return; }
     sessionLoading = true;
     
     try {
@@ -237,6 +242,7 @@
       const { error } = await state.db.auth.updateUser({ password });
       if (error) throw error;
       
+      state.recoveryMode = false;
       hideLoadingScreen();
       $("#reset-modal").classList.remove("show");
       flash("Password updated successfully. Please sign in with your new password.");
@@ -1396,6 +1402,7 @@
     const code = queryParams.get('code');
 
     if (type === 'recovery' && accessToken) {
+      state.recoveryMode = true;
       showLoadingScreen('Verifying reset link...');
       state.db.auth.setSession({
         access_token: accessToken,
@@ -1406,6 +1413,7 @@
         openResetModal();
       }).catch((err) => {
         console.error('Reset link error:', err);
+        state.recoveryMode = false;
         hideLoadingScreen();
         cleanResetUrl();
         flash("Invalid or expired reset link. Please request a new one.", true);
@@ -1414,6 +1422,7 @@
     }
 
     if (code) {
+      state.recoveryMode = true;
       showLoadingScreen('Verifying reset link...');
       state.db.auth.exchangeCodeForSession(code).then(({ error }) => {
         if (error) throw error;
@@ -1421,6 +1430,7 @@
         openResetModal();
       }).catch((err) => {
         console.error('Reset link error:', err);
+        state.recoveryMode = false;
         hideLoadingScreen();
         cleanResetUrl();
         flash("Invalid or expired reset link. Please request a new one.", true);
@@ -1451,11 +1461,18 @@
     };
     
     $("#reset-submit").onclick = resetPassword;
-    $("#reset-cancel").onclick = () => {
+    $("#reset-cancel").onclick = async () => {
       $("#reset-modal").classList.remove("show");
       $("#reset-password").value = "";
       $("#reset-password-confirm").value = "";
       $("#reset-message").textContent = "";
+      // Cancelling a recovery flow should not leave the user silently signed
+      // in without having changed their password — sign out and go back to login.
+      if (state.recoveryMode) {
+        state.recoveryMode = false;
+        try { await state.db.auth.signOut(); } catch (e) { /* ignore */ }
+        showAuth();
+      }
     };
     
     // Listen for auth state changes for password recovery (covers the case
@@ -1464,6 +1481,7 @@
     if (state.db) {
       state.db.auth.onAuthStateChange((event) => {
         if (event === "PASSWORD_RECOVERY") {
+          state.recoveryMode = true;
           cleanResetUrl();
           openResetModal();
         }
@@ -1493,6 +1511,14 @@
     if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSidebar(); });
     window.addEventListener('resize', function() {
+      // Only manage the hamburger/sidebar once the user is actually logged in.
+      // Mobile browsers fire 'resize' when the on-screen keyboard opens/closes
+      // (e.g. tapping the email field on the login screen), and without this
+      // guard that was incorrectly un-hiding the hamburger on the auth screen.
+      const appEl = document.getElementById('app');
+      const loggedIn = appEl && !appEl.classList.contains('hidden');
+      if (!loggedIn) return;
+
       if (window.innerWidth > 768 && sidebar) {
         sidebar.classList.remove('open');
         if (overlay) overlay.classList.remove('show');
