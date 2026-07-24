@@ -21,7 +21,7 @@
   const isAdmin = () => state.profile?.role === "admin";
   const ensureConfigured = () => { if (!configured) { $("#auth-message").textContent = "Add your Supabase Project URL and anon key to config.js before signing in."; return false; } return true; };
  
-  // --- Loading Screen Controls - OPTIMIZED ---
+  // --- Loading Screen Controls ---
   let loadingHidden = false;
   
   function hideLoadingScreen() {
@@ -83,9 +83,8 @@
     return data; 
   }
 
-  // --- Session Management - OPTIMIZED ---
+  // --- Session Management ---
   async function loadSession() {
-    // Prevent multiple concurrent session loads
     if (sessionLoading) return;
     sessionLoading = true;
     
@@ -103,7 +102,6 @@
       state.user = session.user;
       showLoadingScreen('Loading profile...');
       
-      // Load profile and teacher data in parallel
       const [profile, teacher] = await Promise.all([
         api(state.db.from("profiles").select("*").eq("id", state.user.id).single()),
         api(state.db.from("teachers").select("*").eq("profile_id", state.user.id).maybeSingle())
@@ -116,21 +114,15 @@
       $("#user-name").textContent = displayName;
       $("#user-role").textContent = state.profile.role;
       
-      // Switch from auth to app
       $("#auth-screen").classList.add("hidden"); 
       $("#app").classList.remove("hidden");
       $("#menu-toggle-btn")?.classList.remove("is-hidden");
       
       applyRoleVisibility();
-      
-      // Load dashboard data
       await navigate("dashboard");
       
-      // Hide loading screen IMMEDIATELY
       hideLoadingScreen();
       sessionLoading = false;
-      
-      // Small delay for DOM updates
       setTimeout(applyRoleVisibility, 100);
       
     } catch (error) {
@@ -517,7 +509,7 @@
   }
 
   // ============================================================
-  // ===== REPORTS WITH COMPREHENSIVE CALCULATIONS =====
+  // ===== REPORTS =====
   // ============================================================
 
   async function reports() {
@@ -549,13 +541,11 @@
     applyReportView();
   }
 
-  // Helper: Check if a date is a weekend (Saturday or Sunday)
   function isWeekend(dateStr) {
     const d = new Date(dateStr);
     return d.getDay() === 0 || d.getDay() === 6;
   }
 
-  // Helper: Get all dates in a range
   function getDateRangeArray(from, to) {
     const dates = [];
     const current = new Date(from);
@@ -567,7 +557,6 @@
     return dates;
   }
 
-  // Comprehensive runReport with full calculations
   async function runReport() {
     const from = document.getElementById('report-from').value;
     const to = document.getElementById('report-to').value;
@@ -578,17 +567,14 @@
     
     await getClasses();
     
-    // Get all dates in range
     const allDates = getDateRangeArray(from, to);
     const totalDaysInRange = allDates.length;
     
-    // Calculate holidays in the range (weekends + manually added holidays)
     let holidayQuery = state.db.from("holidays").select("date,class_id").gte("date", from).lte("date", to);
     if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
     const holidays = await api(holidayQuery);
     const holidayDates = new Set(holidays.map(h => h.date));
     
-    // Count total holidays (weekends + manual holidays)
     let totalHolidays = 0;
     allDates.forEach(date => {
       const isWeekendDay = isWeekend(date);
@@ -598,31 +584,25 @@
       }
     });
     
-    // Total designated days = total days - holidays
     const totalDesignatedDays = totalDaysInRange - totalHolidays;
     
-    // Get all students in the class (or all classes)
     let studentQuery = state.db.from("students").select("id,name,roll_number,class_id,classes(name,section)").eq("active", true);
     if (classId) studentQuery = studentQuery.eq("class_id", classId);
     const students = await api(studentQuery.order("roll_number"));
     
-    // If a specific student is selected, filter students
     const filteredStudents = studentId ? students.filter(s => s.id === studentId) : students;
     
-    // Get all attendance sessions in date range
     let sessionQuery = state.db.from("attendance_sessions").select("id,attendance_date,class_id")
       .gte("attendance_date", from).lte("attendance_date", to);
     if (classId) sessionQuery = sessionQuery.eq("class_id", classId);
     const sessions = await api(sessionQuery);
     const sessionIds = sessions.map(s => s.id);
     
-    // Get attendance records
     let records = sessionIds.length ? await api(state.db.from("attendance_records")
       .select("id,session_id,student_id,status,remarks")
       .in("session_id", sessionIds)) : [];
     if (studentId) records = records.filter(r => r.student_id === studentId);
     
-    // Calculate for each student
     const studentResults = filteredStudents.map(student => {
       const studentRecords = records.filter(r => r.student_id === student.id);
       const recordMap = {};
@@ -666,19 +646,16 @@
         presentCount: presentCount,
         absentCount: absentCount,
         leaveCount: leaveCount,
-        attendancePercentage: attendancePercentage,
-        unmarked: designatedDaysCount - (presentCount + absentCount + leaveCount)
+        attendancePercentage: attendancePercentage
       };
     });
     
-    // Store for export
     state.reportStudentResults = studentResults;
     state.reportDateRange = { from, to };
     state.reportTotalDays = totalDaysInRange;
     state.reportTotalHolidays = totalHolidays;
     state.reportTotalDesignatedDays = totalDesignatedDays;
     
-    // Store detailed records for detailed report
     state.reportRows = records.map(r => {
       const session = sessions.find(s => s.id === r.session_id);
       const student = students.find(s => s.id === r.student_id);
@@ -694,7 +671,6 @@
     });
     state.reportRows.sort((a, b) => (a.roll || '').localeCompare(b.roll || '', undefined, { numeric: true }));
     
-    // Display summary stats
     const totalStudents = studentResults.length;
     const totalPresent = studentResults.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = studentResults.reduce((sum, s) => sum + s.absentCount, 0);
@@ -712,7 +688,6 @@
       <article><span>Attendance %</span><strong>${overallAttendance}%</strong></article>
     `;
     
-    // Render student summary table
     const summaryEl = document.getElementById('student-summary-table');
     if (summaryEl) {
       summaryEl.innerHTML = studentResults.length ? `
@@ -753,7 +728,6 @@
       ` : empty("No students found.");
     }
     
-    // Render detailed records
     const detailEl = document.getElementById('report-table');
     if (detailEl) {
       if (state.reportRows.length > 0) {
@@ -1344,7 +1318,12 @@
   function openSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
-    if (sidebar) sidebar.classList.add('open');
+    if (sidebar) {
+      sidebar.classList.add('open');
+      // Hide hamburger button when sidebar is open
+      const menuToggle = document.getElementById('menu-toggle-btn');
+      if (menuToggle) menuToggle.style.display = 'none';
+    }
     if (overlay) overlay.classList.add('show');
     document.body.style.overflow = 'hidden';
   }
@@ -1352,9 +1331,45 @@
   function closeSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
-    if (sidebar) sidebar.classList.remove('open');
+    if (sidebar) {
+      sidebar.classList.remove('open');
+      // Show hamburger button when sidebar is closed
+      const menuToggle = document.getElementById('menu-toggle-btn');
+      if (menuToggle && window.innerWidth <= 768) {
+        menuToggle.style.display = 'flex';
+      }
+    }
     if (overlay) overlay.classList.remove('show');
     document.body.style.overflow = '';
+  }
+
+  // --- Reset Password Handler for Email Link ---
+  function handlePasswordReset() {
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get('type');
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    
+    if (type === 'recovery' && accessToken) {
+      showLoadingScreen('Verifying reset link...');
+      
+      state.db.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      }).then(() => {
+        hideLoadingScreen();
+        // Show reset password modal
+        setTimeout(() => {
+          $("#reset-modal").classList.add("show");
+        }, 500);
+        // Clean URL
+        window.history.replaceState({}, '', '/nousomplex-attendance/');
+      }).catch((err) => {
+        console.error('Reset link error:', err);
+        hideLoadingScreen();
+        flash("Invalid or expired reset link. Please try again.", true);
+      });
+    }
   }
 
   // --- Init ---
@@ -1387,6 +1402,22 @@
       $("#reset-message").textContent = "";
     };
     
+    // Handle password reset from email link
+    handlePasswordReset();
+    
+    // Also listen for auth state changes for password recovery
+    if (state.db) {
+      state.db.auth.onAuthStateChange((event, session) => {
+        if (event === "PASSWORD_RECOVERY") {
+          hideLoadingScreen();
+          setTimeout(() => {
+            $("#reset-modal").classList.add("show");
+          }, 300);
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      });
+    }
+    
     // Mobile Sidebar Toggle
     const menuToggle = document.getElementById('menu-toggle-btn');
     const sidebar = document.getElementById('sidebar');
@@ -1396,8 +1427,11 @@
     if (menuToggle) {
       menuToggle.addEventListener('click', function(e) {
         e.stopPropagation();
-        if (sidebar && sidebar.classList.contains('open')) { closeSidebar(); } 
-        else { openSidebar(); }
+        if (sidebar && sidebar.classList.contains('open')) { 
+          closeSidebar(); 
+        } else { 
+          openSidebar(); 
+        }
       });
     }
     if (overlay) overlay.addEventListener('click', closeSidebar);
@@ -1408,6 +1442,14 @@
         sidebar.classList.remove('open');
         if (overlay) overlay.classList.remove('show');
         document.body.style.overflow = '';
+        // Show hamburger button on desktop (hidden by CSS)
+      }
+      // Ensure hamburger visibility based on sidebar state
+      if (window.innerWidth <= 768) {
+        const menuToggleBtn = document.getElementById('menu-toggle-btn');
+        if (menuToggleBtn && sidebar && !sidebar.classList.contains('open')) {
+          menuToggleBtn.style.display = 'flex';
+        }
       }
     });
     document.addEventListener('click', function(e) {
@@ -1427,7 +1469,6 @@
     
     // Check if configured
     if (configured) {
-      // Load session with a small delay to ensure DOM is ready
       setTimeout(() => {
         loadSession();
       }, 100);
