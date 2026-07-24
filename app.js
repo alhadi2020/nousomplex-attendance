@@ -21,21 +21,33 @@
   const isAdmin = () => state.profile?.role === "admin";
   const ensureConfigured = () => { if (!configured) { $("#auth-message").textContent = "Add your Supabase Project URL and anon key to config.js before signing in."; return false; } return true; };
  
-  // --- Loading Screen Controls ---
+  // --- Loading Screen Controls - OPTIMIZED ---
+  let loadingHidden = false;
+  
   function hideLoadingScreen() {
+    if (loadingHidden) return;
     const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) loadingScreen.style.display = 'none';
+    if (loadingScreen) {
+      loadingScreen.style.display = 'none';
+      loadingHidden = true;
+    }
   }
 
   function showLoadingScreen(message = 'Loading attendance portal...') {
     const loadingScreen = document.getElementById('loading-screen');
     const messageEl = document.getElementById('loading-message');
-    if (loadingScreen) loadingScreen.style.display = 'flex';
-    if (messageEl) messageEl.textContent = message;
+    if (loadingScreen) {
+      loadingScreen.style.display = 'flex';
+    }
+    if (messageEl) {
+      messageEl.textContent = message;
+    }
+    loadingHidden = false;
   }
 
   // --- Cache Management ---
   let cachedClasses = null;
+  let sessionLoading = false;
   
   async function getClasses() {
     if (cachedClasses) { state.classes = cachedClasses; return cachedClasses; }
@@ -71,34 +83,60 @@
     return data; 
   }
 
-  // --- Session Management ---
+  // --- Session Management - OPTIMIZED ---
   async function loadSession() {
+    // Prevent multiple concurrent session loads
+    if (sessionLoading) return;
+    sessionLoading = true;
+    
     try {
       showLoadingScreen('Checking session...');
+      
       const { data: { session } } = await state.db.auth.getSession();
-      if (!session) { hideLoadingScreen(); return showAuth(); }
+      
+      if (!session) {
+        hideLoadingScreen();
+        sessionLoading = false;
+        return showAuth();
+      }
+      
       state.user = session.user;
       showLoadingScreen('Loading profile...');
+      
+      // Load profile and teacher data in parallel
       const [profile, teacher] = await Promise.all([
         api(state.db.from("profiles").select("*").eq("id", state.user.id).single()),
         api(state.db.from("teachers").select("*").eq("profile_id", state.user.id).maybeSingle())
       ]);
+      
       state.profile = profile;
       state.teacher = teacher;
-      showLoadingScreen('Loading dashboard...');
+      
       const displayName = state.profile.full_name || state.profile.email;
       $("#user-name").textContent = displayName;
       $("#user-role").textContent = state.profile.role;
+      
+      // Switch from auth to app
       $("#auth-screen").classList.add("hidden"); 
       $("#app").classList.remove("hidden");
       $("#menu-toggle-btn")?.classList.remove("is-hidden");
+      
       applyRoleVisibility();
+      
+      // Load dashboard data
       await navigate("dashboard");
+      
+      // Hide loading screen IMMEDIATELY
       hideLoadingScreen();
-      setTimeout(applyRoleVisibility, 200);
+      sessionLoading = false;
+      
+      // Small delay for DOM updates
+      setTimeout(applyRoleVisibility, 100);
+      
     } catch (error) {
       console.error('Session loading error:', error);
       hideLoadingScreen();
+      sessionLoading = false;
       showAuth();
     }
   }
@@ -116,13 +154,17 @@
   async function signIn(event) {
     event.preventDefault(); 
     if (!ensureConfigured()) return;
+    
     const email = $("#auth-email").value.trim();
     const password = $("#auth-password").value;
+    
     if (!email || !password) {
       $("#auth-message").textContent = "Please enter both email and password.";
       return;
     }
+    
     showLoadingScreen('Signing in...');
+    
     try { 
       await api(state.db.auth.signInWithPassword({ email, password })); 
       await loadSession(); 
@@ -136,12 +178,19 @@
     if (!ensureConfigured()) return;
     const email = $("#auth-email").value.trim();
     const password = $("#auth-password").value;
+    
     if (!email || !password || password.length < 8) {
       return $("#auth-message").textContent = "Enter an email and a password of at least 8 characters first.";
     }
+    
     showLoadingScreen('Creating account...');
+    
     try { 
-      await api(state.db.auth.signUp({ email, password, options: { data: { full_name: email.split("@")[0] } } })); 
+      await api(state.db.auth.signUp({ 
+        email, 
+        password, 
+        options: { data: { full_name: email.split("@")[0] } } 
+      })); 
       $("#auth-message").textContent = "Account created. Check your email to confirm it, then ask an administrator to activate your teacher profile."; 
       hideLoadingScreen();
     } catch (e) { 
@@ -157,7 +206,9 @@
       $("#auth-message").textContent = "Please enter your email address first.";
       return;
     }
+    
     showLoadingScreen('Sending reset email...');
+    
     try {
       const { error } = await state.db.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/nousomplex-attendance/'
@@ -176,25 +227,31 @@
     const password = $("#reset-password").value;
     const confirm = $("#reset-password-confirm").value;
     const messageEl = $("#reset-message");
+    
     if (!password || password.length < 8) {
       messageEl.textContent = "Password must be at least 8 characters.";
       return;
     }
+    
     if (password !== confirm) {
       messageEl.textContent = "Passwords do not match.";
       return;
     }
+    
     messageEl.textContent = "";
     showLoadingScreen('Updating password...');
+    
     try {
       const { error } = await state.db.auth.updateUser({ password });
       if (error) throw error;
+      
       hideLoadingScreen();
       $("#reset-modal").classList.remove("show");
       flash("Password updated successfully. Please sign in with your new password.");
       $("#reset-password").value = "";
       $("#reset-password-confirm").value = "";
       $("#reset-message").textContent = "";
+      
       await state.db.auth.signOut();
       showAuth();
     } catch (e) {
@@ -218,6 +275,7 @@
       "admin-tools":"Admin Tools"
     })[page];
     $("#today").textContent = fmt.format(new Date()); 
+    
     try { 
       await ({ 
         dashboard, attendance, students, classes, teachers, reports, calendar, "admin-tools": adminTools
@@ -473,7 +531,6 @@
       const classId = $("#report-class").value; 
       const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("roll_number")); 
       $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("")}`; 
-      // If a student was selected, re-run report
       if (document.getElementById('report-student').value) {
         await runReport();
       }
@@ -565,7 +622,8 @@
       .in("session_id", sessionIds)) : [];
     if (studentId) records = records.filter(r => r.student_id === studentId);
     
-    // Calculate for each student    const studentResults = filteredStudents.map(student => {
+    // Calculate for each student
+    const studentResults = filteredStudents.map(student => {
       const studentRecords = records.filter(r => r.student_id === student.id);
       const recordMap = {};
       studentRecords.forEach(r => {
@@ -595,7 +653,6 @@
         }
       });
       
-      // Calculate attendance percentage based on designated days
       const attendancePercentage = designatedDaysCount > 0 ? Math.round((presentCount / designatedDaysCount) * 100) : 0;
       
       return {
@@ -700,7 +757,6 @@
     const detailEl = document.getElementById('report-table');
     if (detailEl) {
       if (state.reportRows.length > 0) {
-        // Filter rows for selected student if needed
         let displayRows = state.reportRows;
         if (studentId) {
           const selectedStudent = filteredStudents[0];
@@ -771,7 +827,6 @@
     }
     const book = XLSX.utils.book_new();
     
-    // Summary sheet
     const summaryData = state.reportStudentResults.map(s => ({
       "Roll No.": s.roll,
       "Student": s.name,
@@ -788,7 +843,6 @@
     XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(summaryData), "Summary");
     
     if (mode === "both" || mode === "detail") {
-      // Filter detailed rows for selected student if needed
       let detailRows = state.reportRows;
       const studentId = document.getElementById('report-student')?.value;
       if (studentId) {
@@ -835,7 +889,6 @@
     const totalLeave = results.reduce((sum, s) => sum + s.leaveCount, 0);
     const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
     
-    // Get detailed records for PDF
     let detailRows = state.reportRows;
     if (studentId) {
       const student = results.find(s => s.id === studentId);
@@ -1306,22 +1359,26 @@
 
   // --- Init ---
   function init() {
+    // Show loading screen immediately
     const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) loadingScreen.style.display = 'flex';
-    if (configured) state.db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-    if (state.db) {
-      state.db.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY") {
-          hideLoadingScreen();
-          $("#reset-modal").classList.add("show");
-          window.history.replaceState({}, "", window.location.pathname);
-        }
-      });
+    if (loadingScreen) {
+      loadingScreen.style.display = 'flex';
     }
+    
+    if (configured) {
+      state.db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+    }
+    
+    // Set up event listeners
     $("#auth-form").onsubmit = signIn; 
     $("#signup-button").onclick = signUp;
     $("#forgot-password-btn").onclick = forgotPassword;
-    $("#signout").onclick = async () => { await state.db.auth.signOut(); cachedClasses = null; showAuth(); };
+    $("#signout").onclick = async () => { 
+      await state.db.auth.signOut(); 
+      cachedClasses = null; 
+      showAuth(); 
+    };
+    
     $("#reset-submit").onclick = resetPassword;
     $("#reset-cancel").onclick = () => {
       $("#reset-modal").classList.remove("show");
@@ -1330,6 +1387,7 @@
       $("#reset-message").textContent = "";
     };
     
+    // Mobile Sidebar Toggle
     const menuToggle = document.getElementById('menu-toggle-btn');
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -1357,6 +1415,7 @@
       if (navButton && window.innerWidth <= 768) setTimeout(closeSidebar, 300);
     });
 
+    // Navigation
     document.addEventListener('click', function(e) {
       const button = e.target.closest('#nav button[data-page]');
       if (button) { e.preventDefault(); const page = button.dataset.page; if (page) navigate(page); }
@@ -1366,8 +1425,18 @@
       if (goButton) { const page = goButton.dataset.go; if (page) navigate(page); }
     });
     
-    if (configured) loadSession();
-    else { hideLoadingScreen(); ensureConfigured(); }
+    // Check if configured
+    if (configured) {
+      // Load session with a small delay to ensure DOM is ready
+      setTimeout(() => {
+        loadSession();
+      }, 100);
+    } else {
+      hideLoadingScreen();
+      ensureConfigured();
+    }
   }
+  
+  // Start the application
   init();
 })();
