@@ -5,7 +5,7 @@
   const $ = (s, root = document) => root.querySelector(s);
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const content = $("#page-content");
-  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [] };
+  const state = { db: null, user: null, profile: null, teacher: null, page: "dashboard", classes: [], reportRows: [], reportStudentResults: [], reportDateRange: {} };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
   const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
@@ -494,17 +494,6 @@
     return d.getDay() === 0 || d.getDay() === 6;
   }
 
-  // Helper: Check if a date is a holiday (from holidays table)
-  async function isHoliday(dateStr, classId) {
-    try {
-      let query = state.db.from("holidays").select("id").eq("date", dateStr);
-      if (classId) query = query.eq("class_id", classId);
-      else query = query.is("class_id", null);
-      const result = await api(query.maybeSingle());
-      return !!result;
-    } catch { return false; }
-  }
-
   // Helper: Get all dates in a range
   function getDateRangeArray(from, to) {
     const dates = [];
@@ -557,10 +546,7 @@
     
     // Calculate for each student
     const studentResults = students.map(student => {
-      // Get records for this student
       const studentRecords = records.filter(r => r.student_id === student.id);
-      
-      // Create a map of date -> status for quick lookup
       const recordMap = {};
       studentRecords.forEach(r => {
         const session = sessions.find(s => s.id === r.session_id);
@@ -575,31 +561,22 @@
       let leaveCount = 0;
       
       allDates.forEach(date => {
-        // Check if date is weekend or holiday
         const isWeekendDay = isWeekend(date);
         const isHolidayDay = holidayDates.has(date);
         const isHolidayOrWeekend = isWeekendDay || isHolidayDay;
-        
-        // Check if this date has a record
         const status = recordMap[date];
         
         if (isHolidayOrWeekend) {
-          // This is a holiday/weekend - count as holiday
           holidayCount++;
         } else {
-          // This is a designated day
           designatedDays++;
           totalDays++;
-          
-          // Count attendance status
           if (status === 'present') presentCount++;
           else if (status === 'absent') absentCount++;
           else if (status === 'leave') leaveCount++;
-          // If no status, it's unmarked
         }
       });
       
-      // Calculate attendance percentage
       const attendancePercentage = designatedDays > 0 ? Math.round((presentCount / designatedDays) * 100) : 0;
       
       return {
@@ -628,7 +605,7 @@
     const totalPresent = studentResults.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = studentResults.reduce((sum, s) => sum + s.absentCount, 0);
     const totalLeave = studentResults.reduce((sum, s) => sum + s.leaveCount, 0);
-    const totalHolidays = studentResults.reduce((sum, s) => sum + s.holidayCount, 0) / totalStudents;
+    const totalHolidays = studentResults.reduce((sum, s) => sum + s.holidayCount, 0) / Math.max(totalStudents, 1);
     const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
     
     document.getElementById('report-summary').innerHTML = `
@@ -683,7 +660,7 @@
       ` : empty("No students found.");
     }
     
-    // Detailed records (existing functionality)
+    // Detailed records
     const admin = isAdmin();
     document.getElementById('report-table').innerHTML = state.reportRows.length ? 
       `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td><span class="status ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}</tbody></table></div>` : 
@@ -707,7 +684,6 @@
     }
     const book = XLSX.utils.book_new();
     
-    // Summary sheet
     const summaryData = state.reportStudentResults.map(s => ({
       "Roll No.": s.roll,
       "Student": s.name,
@@ -724,7 +700,6 @@
     XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(summaryData), "Summary");
     
     if (mode === "both" || mode === "detail") {
-      // Detailed records sheet
       const detailData = state.reportRows.map(r => ({
         "Roll No.": r.roll,
         "Student": r.student,
@@ -740,7 +715,7 @@
     XLSX.writeFile(book, `attendance-report${suffix}-${isoToday()}.xlsx`);
   }
 
-  // --- PDF Export with Comprehensive Data ---
+  // --- PDF Export ---
   function exportPDF() {
     if (!state.reportStudentResults || state.reportStudentResults.length === 0) {
       return flash("Run a report with data before exporting.", true);
@@ -754,7 +729,6 @@
     const classFilter = document.getElementById('report-class')?.value || '';
     const className = classFilter ? state.classes.find(c => c.id === classFilter)?.name || '' : 'All Classes';
     
-    // Calculate totals
     const totalDesignatedDays = results.reduce((sum, s) => sum + s.designatedDays, 0);
     const totalPresent = results.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = results.reduce((sum, s) => sum + s.absentCount, 0);
@@ -838,26 +812,34 @@
   }
 
   // ============================================================
-  // ===== CALENDAR VIEW =====
+  // ===== CALENDAR VIEW WITH MULTI-SELECT =====
   // ============================================================
 
   let calendarDate = new Date();
+  let selectedDates = new Set();
 
   async function calendar() {
     if (!isAdmin()) return navigate("dashboard");
     setTemplate("#calendar-template");
     
-    // Populate class filter
     await getClasses();
     const filter = document.getElementById('calendar-class-filter');
     filter.innerHTML = `<option value="">All Classes</option>` + 
       state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
     
-    filter.onchange = renderCalendar;
-    document.getElementById('calendar-today').onclick = () => { calendarDate = new Date(); renderCalendar(); };
+    document.getElementById('calendar-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() - 1); selectedDates.clear(); renderCalendar(); };
+    document.getElementById('calendar-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); selectedDates.clear(); renderCalendar(); };
+    document.getElementById('calendar-today').onclick = () => { calendarDate = new Date(); selectedDates.clear(); renderCalendar(); };
+    
+    document.getElementById('mark-holiday').onclick = () => markSelectedDates('holiday');
+    document.getElementById('mark-designated').onclick = () => markSelectedDates('designated');
+    document.getElementById('clear-selected').onclick = clearAllSelectedDates;
+    document.getElementById('clear-selection').onclick = clearSelection;
     document.getElementById('calendar-detail-close').onclick = () => {
       document.getElementById('calendar-details').style.display = 'none';
     };
+    
+    filter.onchange = () => { selectedDates.clear(); renderCalendar(); };
     
     await renderCalendar();
     applyRoleVisibility();
@@ -880,12 +862,17 @@
     const monthStart = new Date(year, month, 1).toISOString().slice(0, 10);
     const monthEnd = new Date(year, month + 1, 0).toISOString().slice(0, 10);
     
-    // Get holidays
     let holidayQuery = state.db.from("holidays").select("date,class_id,reason").gte("date", monthStart).lte("date", monthEnd);
     if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
     const holidays = await api(holidayQuery);
     const holidayMap = {};
     holidays.forEach(h => { if (!holidayMap[h.date]) holidayMap[h.date] = []; holidayMap[h.date].push(h); });
+    
+    let designatedQuery = state.db.from("designated_days").select("date,class_id,reason").gte("date", monthStart).lte("date", monthEnd);
+    if (classId) designatedQuery = designatedQuery.eq("class_id", classId);
+    const designatedDays = await api(designatedQuery);
+    const designatedMap = {};
+    designatedDays.forEach(d => { if (!designatedMap[d.date]) designatedMap[d.date] = []; designatedMap[d.date].push(d); });
     
     const grid = document.getElementById('calendar-grid');
     let html = `<table><thead><tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr></thead><tbody>`;
@@ -900,13 +887,16 @@
       const isToday = dateStr === todayStr;
       const isWeekendDay = isWeekend(dateStr);
       const isHolidayDay = holidayMap[dateStr] && holidayMap[dateStr].length > 0;
-      const isDesignated = !isWeekendDay && !isHolidayDay;
+      const isDesignatedDay = designatedMap[dateStr] && designatedMap[dateStr].length > 0;
+      const isSelected = selectedDates.has(dateStr);
       
       let cellClass = 'calendar-day';
       if (isToday) cellClass += ' today';
-      if (isWeekendDay && isHolidayDay) cellClass += ' both';
-      else if (isWeekendDay || isHolidayDay) cellClass += ' weekend';
-      else if (isDesignated) cellClass += ' designated';
+      if (isSelected) cellClass += ' selected';
+      
+      if (isHolidayDay && isDesignatedDay) cellClass += ' both';
+      else if (isHolidayDay || isWeekendDay) cellClass += ' weekend';
+      else if (isDesignatedDay) cellClass += ' designated';
       
       let tooltip = `${day} ${monthNames[month]} ${year}`;
       let detailData = [];
@@ -916,10 +906,12 @@
         tooltip += `\nHoliday: ${reasons}`;
         detailData.push({ type: 'Holiday', reason: reasons, items: holidayMap[dateStr] });
       }
-      if (isDesignated) {
-        tooltip += `\nDesignated Day`;
-        detailData.push({ type: 'Designated Day', reason: 'Default designated day' });
+      if (isDesignatedDay) {
+        const reasons = designatedMap[dateStr].map(d => d.reason || 'Designated Day').join(', ');
+        tooltip += `\nDesignated: ${reasons}`;
+        detailData.push({ type: 'Designated Day', reason: reasons, items: designatedMap[dateStr] });
       }
+      if (isSelected) tooltip += `\n✓ Selected`;
       
       html += `<td class="${cellClass}" data-date="${dateStr}" data-detail='${JSON.stringify(detailData).replace(/'/g, "&#39;")}' title="${esc(tooltip)}">
         <span class="day-number">${day}</span>
@@ -933,14 +925,58 @@
     html += `</tr></tbody></table>`;
     grid.innerHTML = html;
     
-    // Add click handlers
     document.querySelectorAll('.calendar-day').forEach(cell => {
-      cell.addEventListener('click', function() {
+      cell.addEventListener('click', function(e) {
         const date = this.dataset.date;
-        const detailData = JSON.parse(this.dataset.detail || '[]');
-        showDateDetails(date, detailData);
+        if (selectedDates.has(date)) {
+          selectedDates.delete(date);
+        } else {
+          selectedDates.add(date);
+        }
+        renderCalendar();
+        updateSelectionInfo();
+        if (selectedDates.size === 1) {
+          const detailData = JSON.parse(this.dataset.detail || '[]');
+          showDateDetails(date, detailData);
+        } else if (selectedDates.size === 0) {
+          document.getElementById('calendar-details').style.display = 'none';
+        } else {
+          showMultipleSelectionDetails();
+        }
       });
     });
+    
+    updateSelectionInfo();
+  }
+
+  function updateSelectionInfo() {
+    const countEl = document.getElementById('selection-count');
+    const infoEl = document.getElementById('selected-info');
+    const listEl = document.getElementById('selected-days-list');
+    
+    if (selectedDates.size > 0) {
+      countEl.style.display = 'inline';
+      countEl.textContent = `${selectedDates.size} day${selectedDates.size > 1 ? 's' : ''} selected`;
+      infoEl.style.display = 'block';
+      const sorted = Array.from(selectedDates).sort();
+      listEl.textContent = sorted.join(', ');
+    } else {
+      countEl.style.display = 'none';
+      infoEl.style.display = 'none';
+    }
+  }
+
+  function showMultipleSelectionDetails() {
+    const detailContainer = document.getElementById('calendar-details');
+    const detailDate = document.getElementById('calendar-detail-date');
+    const detailContent = document.getElementById('calendar-detail-content');
+    
+    detailContainer.style.display = 'block';
+    detailDate.textContent = `📅 ${selectedDates.size} days selected`;
+    
+    let html = `<p style="color:#6b7280; font-size:13px; margin-bottom:10px;">Selected dates: ${Array.from(selectedDates).sort().join(', ')}</p>`;
+    html += `<p style="font-size:13px; color:#4f46e5;">Use the buttons above to mark all selected days as Holiday or Designated Day.</p>`;
+    detailContent.innerHTML = html;
   }
 
   function showDateDetails(date, details) {
@@ -964,6 +1000,99 @@
     } else {
       detailContent.innerHTML = '<p class="muted" style="margin:0;">No events on this date.</p>';
     }
+  }
+
+  async function markSelectedDates(type) {
+    if (selectedDates.size === 0) {
+      flash("Please select at least one date first. Click on dates to select them.", true);
+      return;
+    }
+    
+    const classId = document.getElementById('calendar-class-filter')?.value || null;
+    const table = type === 'holiday' ? 'holidays' : 'designated_days';
+    const label = type === 'holiday' ? 'Holiday' : 'Designated Day';
+    
+    const reason = prompt(`Enter reason for ${label} for ${selectedDates.size} selected day(s):`, label);
+    if (reason === null) return;
+    
+    let successCount = 0;
+    let skipCount = 0;
+    
+    for (const date of selectedDates) {
+      let query = state.db.from(table).select("id").eq("date", date);
+      if (classId) query = query.eq("class_id", classId);
+      else query = query.is("class_id", null);
+      const existing = await api(query.maybeSingle());
+      
+      if (existing) {
+        skipCount++;
+        continue;
+      }
+      
+      try {
+        await api(state.db.from(table).insert({ class_id: classId, date: date, reason: reason }));
+        successCount++;
+      } catch (err) {
+        flash(err.message, true);
+      }
+    }
+    
+    if (successCount > 0) {
+      flash(`✅ ${successCount} day(s) marked as ${label}. ${skipCount > 0 ? `⚠️ ${skipCount} already existed.` : ''}`);
+    } else if (skipCount > 0) {
+      flash(`⚠️ All ${skipCount} day(s) already have ${label}.`, true);
+    }
+    
+    selectedDates.clear();
+    renderCalendar();
+  }
+
+  async function clearAllSelectedDates() {
+    if (selectedDates.size === 0) {
+      flash("Please select at least one date first.", true);
+      return;
+    }
+    
+    const classId = document.getElementById('calendar-class-filter')?.value || null;
+    
+    if (!confirm(`Remove all events from ${selectedDates.size} selected day(s)?`)) return;
+    
+    let successCount = 0;
+    
+    for (const date of selectedDates) {
+      let holidayQuery = state.db.from("holidays").select("id").eq("date", date);
+      let designatedQuery = state.db.from("designated_days").select("id").eq("date", date);
+      
+      if (classId) {
+        holidayQuery = holidayQuery.eq("class_id", classId);
+        designatedQuery = designatedQuery.eq("class_id", classId);
+      } else {
+        holidayQuery = holidayQuery.is("class_id", null);
+        designatedQuery = designatedQuery.is("class_id", null);
+      }
+      
+      const holiday = await api(holidayQuery.maybeSingle());
+      const designated = await api(designatedQuery.maybeSingle());
+      
+      try {
+        if (holiday) await api(state.db.from("holidays").delete().eq("id", holiday.id));
+        if (designated) await api(state.db.from("designated_days").delete().eq("id", designated.id));
+        if (holiday || designated) successCount++;
+      } catch (err) {
+        flash(err.message, true);
+      }
+    }
+    
+    flash(`✅ Cleared events from ${successCount} day(s).`);
+    selectedDates.clear();
+    renderCalendar();
+  }
+
+  function clearSelection() {
+    selectedDates.clear();
+    renderCalendar();
+    document.getElementById('calendar-details').style.display = 'none';
+    flash("Selection cleared.");
   }
 
   // --- Admin Tools ---
@@ -1072,7 +1201,6 @@
       $("#reset-message").textContent = "";
     };
     
-    // Mobile Sidebar Toggle
     const menuToggle = document.getElementById('menu-toggle-btn');
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -1100,7 +1228,6 @@
       if (navButton && window.innerWidth <= 768) setTimeout(closeSidebar, 300);
     });
 
-    // Navigation
     document.addEventListener('click', function(e) {
       const button = e.target.closest('#nav button[data-page]');
       if (button) { e.preventDefault(); const page = button.dataset.page; if (page) navigate(page); }
