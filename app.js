@@ -927,8 +927,8 @@
         <div class="header"><h1>Nous <span>Complex</span></h1><h2>Attendance Report</h2><p>Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
         <div class="report-meta">
           <span class="meta-item"><strong>Date Range:</strong> ${from || 'N/A'} to ${to || 'N/A'}</span>
-          <span class="meta-item"><strong>Class:</strong> ${className}</span>
-          <span class="meta-item"><strong>Student:</strong> ${studentName}</span>
+          <span class="meta-item"><strong>Class:</strong> ${esc(className)}</span>
+          <span class="meta-item"><strong>Student:</strong> ${esc(studentName)}</span>
           <span class="meta-item"><strong>Total Students:</strong> ${results.length}</span>
           <span class="meta-item"><strong>Report Type:</strong> ${document.getElementById('report-view')?.selectedOptions?.[0]?.textContent || 'Summary By Student Only'}</span>
         </div>
