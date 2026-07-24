@@ -86,13 +86,13 @@
     .auth-card .brand-title .company-name {
       font-size: 28px;
       font-weight: 700;
-      color: #0f05b3;
+      color: #1a1a2e;
       letter-spacing: 1px;
       display: block;
       line-height: 1.2;
     }
     .auth-card .brand-title .company-name .highlight {
-      color: #0f05b3;
+      color: #4f46e5;
     }
     .auth-card .brand-title .portal-subtitle {
       font-size: 18px;
@@ -710,12 +710,9 @@
 
     /* ===== RESPONSIVE - MOBILE ===== */
     @media (max-width: 768px) {
-      /* Show menu button on mobile */
       .menu-toggle-btn {
         display: flex !important;
       }
-
-      /* Sidebar - slide from left */
       .sidebar {
         position: fixed;
         top: 0;
@@ -738,16 +735,12 @@
       .sidebar-overlay.show {
         display: block;
       }
-
-      /* Main content - full width */
       .main {
         padding: 60px 12px 12px 12px !important;
         width: 100%;
         max-width: 100%;
         overflow-x: hidden;
       }
-
-      /* Login screen */
       .auth-card {
         padding: 25px 18px;
         margin: 10px;
@@ -761,7 +754,7 @@
       }
       .auth-card input {
         padding: 12px 14px;
-        font-size: 16px; /* Prevents zoom on iOS */
+        font-size: 16px;
       }
       .auth-card .primary {
         padding: 14px 20px;
@@ -779,8 +772,6 @@
       .auth-logo {
         max-width: 80px;
       }
-
-      /* Stats on mobile */
       .stats {
         grid-template-columns: 1fr 1fr !important;
         gap: 8px !important;
@@ -794,8 +785,6 @@
       .stats article span {
         font-size: 11px;
       }
-
-      /* Panels on mobile */
       .panel {
         padding: 15px;
         border-radius: 8px;
@@ -808,8 +797,6 @@
       .panel-heading h2 {
         font-size: 16px;
       }
-
-      /* Forms on mobile */
       .form-grid {
         grid-template-columns: 1fr !important;
         gap: 10px;
@@ -822,8 +809,6 @@
         padding: 10px 12px;
         font-size: 16px;
       }
-
-      /* Toolbar on mobile */
       .toolbar {
         flex-direction: column;
         width: 100%;
@@ -834,8 +819,6 @@
         padding: 12px;
         font-size: 14px;
       }
-
-      /* Tables on mobile */
       .table-wrap table {
         font-size: 13px;
         min-width: 500px;
@@ -852,16 +835,12 @@
         font-size: 12px;
         padding: 4px 6px;
       }
-
-      /* Header on mobile */
       .main header h1 {
         font-size: 18px;
       }
       .main header p {
         font-size: 12px;
       }
-
-      /* Modal on mobile */
       .reset-modal .modal-content {
         padding: 20px;
         margin: 10px;
@@ -875,16 +854,12 @@
       .reset-modal .modal-content .toolbar button {
         width: 100%;
       }
-
-      /* Admin panel on mobile */
       .admin-panel {
         padding: 12px;
       }
       .admin-panel .form-grid {
         grid-template-columns: 1fr !important;
       }
-
-      /* Hide old elements */
       #menu-toggle {
         display: none !important;
       }
@@ -1211,7 +1186,7 @@
         <button id="excel-export-both" class="primary export-only">Download Excel (Both)</button>
         <button id="excel-export-summary" class="secondary export-only">Download Excel (Summary)</button>
         <button id="excel-export-detail" class="secondary export-only">Download Excel (Detailed)</button>
-        <button id="pdf-export" class="secondary export-only">Save PDF</button>
+        <button id="pdf-export" class="secondary export-only">📄 Save PDF</button>
       </div>
       <p id="export-restricted-note" class="muted hidden">Report Downloads Have Been Disabled For Your Account By The Administrator.</p>
       <div id="report-summary" class="stats compact"></div>
@@ -1230,13 +1205,16 @@
     </section>
   </template>
 
+  <!-- ===== ADMIN TOOLS TEMPLATE ===== -->
   <template id="admin-tools-template">
     <section class="panel">
       <div class="panel-heading">
         <h2>Admin Tools</h2>
       </div>
+      
+      <!-- Clear Attendance Data -->
       <div class="admin-panel">
-        <h3>Clear Attendance Data</h3>
+        <h3>🗑️ Clear Attendance Data</h3>
         <p class="muted">Delete attendance records for a specific date range. This action cannot be undone.</p>
         <div class="form-grid">
           <label>From Date
@@ -1258,6 +1236,82 @@
         </div>
         <button id="clear-attendance" class="danger" style="background:#ef4444;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;margin-top:10px;">Clear Attendance Records</button>
         <div id="clear-result" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Holidays Management -->
+      <div class="admin-panel">
+        <h3>📅 Manage Holidays</h3>
+        <p class="muted">Add holidays for specific classes or all classes. Students won't be marked absent on these dates.</p>
+        <div class="form-grid">
+          <label>Class
+            <select id="holiday-class">
+              <option value="">All Classes</option>
+            </select>
+          </label>
+          <label>Date
+            <input id="holiday-date" type="date">
+          </label>
+          <label>Reason
+            <input id="holiday-reason" placeholder="e.g., Eid Holiday, Winter Break">
+          </label>
+        </div>
+        <div class="toolbar">
+          <button id="add-holiday" class="primary">Add Holiday</button>
+          <button id="bulk-holiday" class="secondary">Bulk Add Holidays</button>
+        </div>
+        <div id="holiday-bulk-form" style="display:none; margin-top:10px; padding:10px; background:rgba(0,0,0,0.03); border-radius:6px;">
+          <div class="form-grid">
+            <label>From Date
+              <input id="holiday-from" type="date">
+            </label>
+            <label>To Date
+              <input id="holiday-to" type="date">
+            </label>
+            <label>Reason
+              <input id="holiday-bulk-reason" placeholder="e.g., Winter Break">
+            </label>
+          </div>
+          <button id="holiday-bulk-submit" class="primary" style="margin-top:5px;">Add Bulk Holidays</button>
+        </div>
+        <div id="holidays-list" style="margin-top:15px;"></div>
+      </div>
+
+      <!-- Designated Days Management -->
+      <div class="admin-panel">
+        <h3>⭐ Manage Designated Days</h3>
+        <p class="muted">Designate mandatory attendance days for specific classes or all classes.</p>
+        <div class="form-grid">
+          <label>Class
+            <select id="designated-class">
+              <option value="">All Classes</option>
+            </select>
+          </label>
+          <label>Date
+            <input id="designated-date" type="date">
+          </label>
+          <label>Reason
+            <input id="designated-reason" placeholder="e.g., Exam Day, Important Event">
+          </label>
+        </div>
+        <div class="toolbar">
+          <button id="add-designated" class="primary">Add Designated Day</button>
+          <button id="bulk-designated" class="secondary">Bulk Add Designated Days</button>
+        </div>
+        <div id="designated-bulk-form" style="display:none; margin-top:10px; padding:10px; background:rgba(0,0,0,0.03); border-radius:6px;">
+          <div class="form-grid">
+            <label>From Date
+              <input id="designated-from" type="date">
+            </label>
+            <label>To Date
+              <input id="designated-to" type="date">
+            </label>
+            <label>Reason
+              <input id="designated-bulk-reason" placeholder="e.g., Exam Week">
+            </label>
+          </div>
+          <button id="designated-bulk-submit" class="primary" style="margin-top:5px;">Add Bulk Designated Days</button>
+        </div>
+        <div id="designated-list" style="margin-top:15px;"></div>
       </div>
     </section>
   </template>
