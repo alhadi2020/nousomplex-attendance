@@ -712,7 +712,7 @@
       padding: 8px 4px;
       text-align: center;
       vertical-align: middle;
-      cursor: pointer;
+      cursor: default;
       min-height: 70px;
       min-width: 40px;
       transition: all 0.2s;
@@ -720,12 +720,6 @@
       background: white;
       border: 1px solid #e5e7eb;
       user-select: none;
-    }
-    .calendar-day:hover {
-      background: #f1f5f9;
-      transform: scale(1.02);
-      z-index: 2;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     .calendar-day .day-number {
       font-size: 14px;
@@ -742,31 +736,31 @@
       color: #4f46e5;
       font-weight: 700;
     }
-    .calendar-day.holiday {
+    .calendar-day.weekend {
       background: #fef3c7;
       border-color: #f59e0b;
+    }
+    .calendar-day.weekend .day-number {
+      color: #92400e;
     }
     .calendar-day.designated {
       background: #dbeafe;
       border-color: #3b82f6;
     }
+    .calendar-day.designated .day-number {
+      color: #1e40af;
+    }
     .calendar-day.both {
       background: #fef9c3;
       border-color: #ca8a04;
     }
-    .calendar-day.selected {
-      outline: 3px solid #4f46e5;
-      outline-offset: -2px;
+    .calendar-day.both .day-number {
+      color: #854d0e;
     }
     .calendar-empty {
       background: #f9fafb;
       border: 1px solid #e5e7eb;
       min-height: 70px;
-    }
-    .badge-indicator {
-      font-size: 12px;
-      display: inline-block;
-      margin: 0 1px;
     }
     .calendar-legend {
       display: inline-flex;
@@ -813,40 +807,6 @@
       border-radius: 6px;
       font-size: 13px;
       background: white;
-    }
-    .calendar-toolbar .action-buttons {
-      display: flex;
-      gap: 8px;
-      margin-left: auto;
-    }
-    .calendar-toolbar .action-buttons button {
-      padding: 6px 14px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .calendar-toolbar .action-buttons .btn-holiday {
-      background: #f59e0b;
-      color: white;
-    }
-    .calendar-toolbar .action-buttons .btn-holiday:hover {
-      background: #d97706;
-    }
-    .calendar-toolbar .action-buttons .btn-designated {
-      background: #3b82f6;
-      color: white;
-    }
-    .calendar-toolbar .action-buttons .btn-designated:hover {
-      background: #2563eb;
-    }
-    .calendar-toolbar .action-buttons .btn-clear {
-      background: #ef4444;
-      color: white;
-    }
-    .calendar-toolbar .action-buttons .btn-clear:hover {
-      background: #dc2626;
     }
 
     /* Responsive */
@@ -909,12 +869,9 @@
       #menu-toggle { display: none !important; }
       .calendar-day { min-height: 50px; padding: 4px 2px; }
       .calendar-day .day-number { font-size: 12px; }
-      .badge-indicator { font-size: 10px; }
       .calendar-legend { font-size: 11px; }
       #calendar-grid table th { font-size: 11px; padding: 4px 2px; }
       .calendar-toolbar { flex-direction: column; align-items: stretch; }
-      .calendar-toolbar .action-buttons { margin-left: 0; justify-content: stretch; }
-      .calendar-toolbar .action-buttons button { flex: 1; }
     }
 
     @media (max-width: 400px) {
@@ -1162,9 +1119,7 @@
       <div class="panel-heading">
         <h2>Calendar</h2>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button id="calendar-prev" class="secondary">◀</button>
           <span id="calendar-month-year" style="font-weight:600; font-size:16px; min-width:150px; text-align:center;"></span>
-          <button id="calendar-next" class="secondary">▶</button>
           <button id="calendar-today" class="primary" style="padding:6px 12px; font-size:13px;">Today</button>
         </div>
       </div>
@@ -1177,25 +1132,14 @@
           </select>
         </label>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <span class="calendar-legend"><span style="background:#fef3c7; border:1px solid #f59e0b; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Holiday</span>
-          <span class="calendar-legend" style="margin-left:8px;"><span style="background:#dbeafe; border:1px solid #3b82f6; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Designated</span>
+          <span class="calendar-legend"><span style="background:#fef3c7; border:1px solid #f59e0b; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Weekend/Holiday</span>
+          <span class="calendar-legend" style="margin-left:8px;"><span style="background:#dbeafe; border:1px solid #3b82f6; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Designated Day</span>
           <span class="calendar-legend" style="margin-left:8px;"><span style="background:#fef9c3; border:1px solid #ca8a04; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Both</span>
-        </div>
-        <div class="action-buttons">
-          <button class="btn-holiday" id="mark-holiday">Mark Holiday</button>
-          <button class="btn-designated" id="mark-designated">Mark Designated</button>
-          <button class="btn-clear" id="clear-selected">Clear</button>
         </div>
       </div>
 
       <!-- Calendar Grid -->
       <div class="table-wrap" id="calendar-grid"></div>
-
-      <!-- Selected Date Info -->
-      <div id="selected-info" style="margin-top:10px; padding:10px; background:#f8fafc; border-radius:8px; display:none;">
-        <p style="margin:0;"><strong>Selected:</strong> <span id="selected-date-text"></span></p>
-        <p style="margin:5px 0 0 0; font-size:13px; color:#6b7280;">Click a date to select it, then use the buttons above to mark as Holiday or Designated Day.</p>
-      </div>
 
       <!-- Details Panel -->
       <div id="calendar-details" style="margin-top:15px; padding:15px; background:#f8fafc; border-radius:8px; display:none;">
