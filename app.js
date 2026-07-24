@@ -24,30 +24,21 @@
   // --- Loading Screen Controls ---
   function hideLoadingScreen() {
     const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-      loadingScreen.style.display = 'none';
-    }
+    if (loadingScreen) loadingScreen.style.display = 'none';
   }
 
   function showLoadingScreen(message = 'Loading attendance portal...') {
     const loadingScreen = document.getElementById('loading-screen');
     const messageEl = document.getElementById('loading-message');
-    if (loadingScreen) {
-      loadingScreen.style.display = 'flex';
-    }
-    if (messageEl) {
-      messageEl.textContent = message;
-    }
+    if (loadingScreen) loadingScreen.style.display = 'flex';
+    if (messageEl) messageEl.textContent = message;
   }
 
   // --- Cache Management ---
   let cachedClasses = null;
   
   async function getClasses() {
-    if (cachedClasses) {
-      state.classes = cachedClasses;
-      return cachedClasses;
-    }
+    if (cachedClasses) { state.classes = cachedClasses; return cachedClasses; }
     state.classes = await api(state.db.from("classes").select("id,name,section,academic_year,teacher_id,teachers(name)").order("name"));
     cachedClasses = state.classes;
     return state.classes;
@@ -66,17 +57,11 @@
       el.style.display = admin ? "" : "none";
     });
     const teachersTab = document.querySelector('[data-page="teachers"]');
-    if (teachersTab) {
-      teachersTab.style.display = admin ? "" : "none";
-    }
+    if (teachersTab) teachersTab.style.display = admin ? "" : "none";
     const calendarTab = document.querySelector('[data-page="calendar"]');
-    if (calendarTab) {
-      calendarTab.style.display = admin ? "" : "none";
-    }
+    if (calendarTab) calendarTab.style.display = admin ? "" : "none";
     const adminToolsTab = document.querySelector('[data-page="admin-tools"]');
-    if (adminToolsTab) {
-      adminToolsTab.style.display = admin ? "" : "none";
-    }
+    if (adminToolsTab) adminToolsTab.style.display = admin ? "" : "none";
   }
 
   // --- API Helper ---
@@ -90,40 +75,27 @@
   async function loadSession() {
     try {
       showLoadingScreen('Checking session...');
-      
       const { data: { session } } = await state.db.auth.getSession();
-      
-      if (!session) {
-        hideLoadingScreen();
-        return showAuth();
-      }
-      
+      if (!session) { hideLoadingScreen(); return showAuth(); }
       state.user = session.user;
       showLoadingScreen('Loading profile...');
-      
       const [profile, teacher] = await Promise.all([
         api(state.db.from("profiles").select("*").eq("id", state.user.id).single()),
         api(state.db.from("teachers").select("*").eq("profile_id", state.user.id).maybeSingle())
       ]);
-      
       state.profile = profile;
       state.teacher = teacher;
-      
       showLoadingScreen('Loading dashboard...');
-      
       const displayName = state.profile.full_name || state.profile.email;
       $("#user-name").textContent = displayName;
       $("#user-role").textContent = state.profile.role;
-      
       $("#auth-screen").classList.add("hidden"); 
       $("#app").classList.remove("hidden");
       $("#menu-toggle-btn")?.classList.remove("is-hidden");
-      
       applyRoleVisibility();
       await navigate("dashboard");
       hideLoadingScreen();
       setTimeout(applyRoleVisibility, 200);
-      
     } catch (error) {
       console.error('Session loading error:', error);
       hideLoadingScreen();
@@ -144,17 +116,13 @@
   async function signIn(event) {
     event.preventDefault(); 
     if (!ensureConfigured()) return;
-    
     const email = $("#auth-email").value.trim();
     const password = $("#auth-password").value;
-    
     if (!email || !password) {
       $("#auth-message").textContent = "Please enter both email and password.";
       return;
     }
-    
     showLoadingScreen('Signing in...');
-    
     try { 
       await api(state.db.auth.signInWithPassword({ email, password })); 
       await loadSession(); 
@@ -168,19 +136,12 @@
     if (!ensureConfigured()) return;
     const email = $("#auth-email").value.trim();
     const password = $("#auth-password").value;
-    
     if (!email || !password || password.length < 8) {
       return $("#auth-message").textContent = "Enter an email and a password of at least 8 characters first.";
     }
-    
     showLoadingScreen('Creating account...');
-    
     try { 
-      await api(state.db.auth.signUp({ 
-        email, 
-        password, 
-        options: { data: { full_name: email.split("@")[0] } } 
-      })); 
+      await api(state.db.auth.signUp({ email, password, options: { data: { full_name: email.split("@")[0] } } })); 
       $("#auth-message").textContent = "Account created. Check your email to confirm it, then ask an administrator to activate your teacher profile."; 
       hideLoadingScreen();
     } catch (e) { 
@@ -196,9 +157,7 @@
       $("#auth-message").textContent = "Please enter your email address first.";
       return;
     }
-    
     showLoadingScreen('Sending reset email...');
-    
     try {
       const { error } = await state.db.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + '/nousomplex-attendance/'
@@ -212,36 +171,30 @@
     }
   }
 
-  // --- Reset Password (after clicking email link) ---
+  // --- Reset Password ---
   async function resetPassword() {
     const password = $("#reset-password").value;
     const confirm = $("#reset-password-confirm").value;
     const messageEl = $("#reset-message");
-    
     if (!password || password.length < 8) {
       messageEl.textContent = "Password must be at least 8 characters.";
       return;
     }
-    
     if (password !== confirm) {
       messageEl.textContent = "Passwords do not match.";
       return;
     }
-    
     messageEl.textContent = "";
     showLoadingScreen('Updating password...');
-    
     try {
       const { error } = await state.db.auth.updateUser({ password });
       if (error) throw error;
-      
       hideLoadingScreen();
       $("#reset-modal").classList.remove("show");
       flash("Password updated successfully. Please sign in with your new password.");
       $("#reset-password").value = "";
       $("#reset-password-confirm").value = "";
       $("#reset-message").textContent = "";
-      
       await state.db.auth.signOut();
       showAuth();
     } catch (e) {
@@ -261,21 +214,13 @@
       classes:"Classes", 
       teachers:"Teachers", 
       reports:"Reports & exports",
-      calendar:"📅 Calendar",
+      calendar:"Calendar",
       "admin-tools":"Admin Tools"
     })[page];
     $("#today").textContent = fmt.format(new Date()); 
-    
     try { 
       await ({ 
-        dashboard, 
-        attendance, 
-        students, 
-        classes, 
-        teachers, 
-        reports,
-        calendar,
-        "admin-tools": adminTools
+        dashboard, attendance, students, classes, teachers, reports, calendar, "admin-tools": adminTools
       })[page](); 
       setTimeout(applyRoleVisibility, 100);
     } catch (e) { 
@@ -288,34 +233,28 @@
   async function dashboard() {
     setTemplate("#dashboard-template"); 
     const day = isoToday();
-    
     const [students, sessions] = await Promise.all([
       api(state.db.from("students").select("id")),
       api(state.db.from("attendance_sessions").select("id,classes(name,section)").eq("attendance_date", day))
     ]);
-    
     const ids = sessions.map(s => s.id); 
     const records = ids.length ? await api(state.db.from("attendance_records").select("status,attendance_sessions(id,classes(name,section))").in("session_id", ids)) : [];
-    
     const present = records.filter(r => r.status === "present").length;
     const rate = records.length ? Math.round(present / records.length * 100) : 0;
-    
     $("[data-stat='students']").textContent = students.length; 
     $("[data-stat='classes']").textContent = state.classes.length; 
     $("[data-stat='present']").textContent = present; 
     $("[data-stat='rate']").textContent = `${rate}%`;
-    
     const rows = sessions.map(s => { 
       const rs = records.filter(r => r.attendance_sessions?.id === s.id); 
       return `<tr><td>${esc(s.classes?.name)} ${esc(s.classes?.section || "")}</td><td>${rs.filter(r => r.status === "present").length}</td><td>${rs.filter(r => r.status === "absent").length}</td><td>${rs.filter(r => r.status === "leave").length}</td></tr>`; 
     }).join("");
-    
     $("#today-table").innerHTML = rows ? `<div class="table-wrap"><table><thead><tr><th>Class</th><th>Present</th><th>Absent</th><th>Leave</th></tr></thead><tbody>${rows}</tbody></table></div>` : empty("No attendance has been recorded today.");
     $("[data-go='attendance']").onclick = () => navigate("attendance");
     applyRoleVisibility();
   }
 
-  // --- Attendance Page ---
+  // --- Attendance ---
   async function attendance() {
     setTemplate("#attendance-template"); 
     await getClasses(); 
@@ -329,23 +268,17 @@
   async function loadRoster() {
     const classId = $("#attendance-class").value;
     const date = $("#attendance-date").value;
-    
-    if (!classId || !date) {
-      return flash("Choose a class and date.", true);
-    }
-    
+    if (!classId || !date) return flash("Choose a class and date.", true);
     const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
     const session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
     const map = Object.fromEntries(existing.map(r => [r.student_id, r]));
-    
     $("#roster").innerHTML = students.length ? 
       `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th></tr></thead><tbody>${students.map(s => { 
         const r = map[s.id] || { status:"present", remarks:"" }; 
         return `<tr data-student="${s.id}"><td>${esc(s.roll_number)}</td><td>${esc(s.name)}</td><td><select class="status-select"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select></td><td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250"></td></tr>`; 
       }).join("")}</tbody></table></div>` : 
       empty("No active students exist in this class.");
-    
     $("#save-attendance").disabled = !students.length;
     applyRoleVisibility();
   }
@@ -353,58 +286,39 @@
   async function saveAttendance() {
     const classId = $("#attendance-class").value;
     const date = $("#attendance-date").value;
-    
     if (!classId || !date) return;
-    
     try {
       let session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
-      if (!session) {
-        session = await api(state.db.from("attendance_sessions").insert({ class_id:classId, attendance_date:date }).select("id").single());
-      }
-      
+      if (!session) session = await api(state.db.from("attendance_sessions").insert({ class_id:classId, attendance_date:date }).select("id").single());
       const records = [...document.querySelectorAll("#roster tbody tr")].map(row => ({ 
-        session_id:session.id, 
-        student_id:row.dataset.student, 
-        status:$(".status-select", row).value, 
-        remarks:$(".remarks", row).value.trim() || null 
+        session_id:session.id, student_id:row.dataset.student, status:$(".status-select", row).value, remarks:$(".remarks", row).value.trim() || null 
       }));
-      
       await api(state.db.from("attendance_records").upsert(records, { onConflict:"session_id,student_id" })); 
       flash("Attendance saved successfully.");
-    } catch (e) { 
-      flash(e.message, true); 
-    }
+    } catch (e) { flash(e.message, true); }
   }
 
-  // --- Students Page ---
+  // --- Students ---
   async function students() {
     setTemplate("#students-template"); 
     await getClasses(); 
     const admin = isAdmin();
     let rows = await api(state.db.from("students").select("id,name,roll_number,email,phone,class_id,active,classes(name,section)").order("roll_number"));
     if (!admin) rows = rows.filter(s => s.active);
-    
     $("#students-class-filter").innerHTML = classOptions("", "All classes");
-    
     const renderTable = () => {
       const filterClass = $("#students-class-filter").value;
       const filtered = filterClass ? rows.filter(s => s.class_id === filterClass) : rows;
-      
       $("#students-table").innerHTML = filtered.length ? 
         `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Name</th><th>Class</th><th>Email</th><th>Phone</th>${admin ? "<th>Status</th><th>Actions</th>" : ""}</tr></thead><tbody>${filtered.map(s => `<tr data-id="${s.id}"><td>${esc(s.roll_number)}</td><td>${esc(s.name)}</td><td>${esc(s.classes?.name)} ${esc(s.classes?.section || "")}</td><td>${esc(s.email || "—")}</td><td>${esc(s.phone || "—")}</td>${admin ? `<td><span class="status ${s.active ? "present" : "absent"}">${s.active ? "Active" : "Inactive"}</span></td><td class="row-actions"><button class="text-button edit-student" type="button">Edit</button><button class="text-button toggle-student" type="button">${s.active ? "Disable" : "Enable"}</button><button class="text-button danger delete-student" type="button">Delete</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : 
         empty("No students found.");
-      
       if (admin) {
         $$(".edit-student").forEach(btn => btn.onclick = () => showStudentForm(rows.find(r => r.id === btn.closest("tr").dataset.id)));
         $$(".delete-student").forEach(btn => btn.onclick = () => deleteStudent(btn.closest("tr").dataset.id));
-        $$(".toggle-student").forEach(btn => btn.onclick = () => { 
-          const s = rows.find(r => r.id === btn.closest("tr").dataset.id); 
-          toggleStudentActive(s.id, s.active); 
-        });
+        $$(".toggle-student").forEach(btn => btn.onclick = () => { const s = rows.find(r => r.id === btn.closest("tr").dataset.id); toggleStudentActive(s.id, s.active); });
       }
       applyRoleVisibility();
     };
-    
     renderTable();
     $("#students-class-filter").onchange = renderTable;
     if (admin) $("#new-student").onclick = () => showStudentForm();
@@ -416,9 +330,7 @@
       await api(state.db.from("students").update({ active: !currentActive }).eq("id", id)); 
       flash(!currentActive ? "Student enabled — visible to teachers again." : "Student disabled — hidden from teachers and attendance marking."); 
       students(); 
-    } catch (err) { 
-      flash(err.message, true); 
-    }
+    } catch (err) { flash(err.message, true); }
   }
 
   function showStudentForm(student = null) {
@@ -434,59 +346,36 @@
     e.preventDefault(); 
     const f = new FormData(e.target); 
     try { 
-      await api(state.db.from("students").insert({ 
-        name:f.get("name"), 
-        roll_number:f.get("roll"), 
-        class_id:f.get("class"), 
-        email:f.get("email") || null, 
-        phone:f.get("phone") || null 
-      })); 
+      await api(state.db.from("students").insert({ name:f.get("name"), roll_number:f.get("roll"), class_id:f.get("class"), email:f.get("email") || null, phone:f.get("phone") || null })); 
       flash("Student registered."); 
       students(); 
-    } catch (err) { 
-      flash(err.message, true); 
-    } 
+    } catch (err) { flash(err.message, true); } 
   }
 
   async function updateStudent(e, id) { 
     e.preventDefault(); 
     const f = new FormData(e.target); 
     try { 
-      await api(state.db.from("students").update({ 
-        name:f.get("name"), 
-        roll_number:f.get("roll"), 
-        class_id:f.get("class"), 
-        email:f.get("email") || null, 
-        phone:f.get("phone") || null 
-      }).eq("id", id)); 
+      await api(state.db.from("students").update({ name:f.get("name"), roll_number:f.get("roll"), class_id:f.get("class"), email:f.get("email") || null, phone:f.get("phone") || null }).eq("id", id)); 
       flash("Student updated."); 
       students(); 
-    } catch (err) { 
-      flash(err.message, true); 
-    } 
+    } catch (err) { flash(err.message, true); } 
   }
 
   async function deleteStudent(id) {
     if (!confirm("Delete this student? This cannot be undone.")) return;
-    try { 
-      await api(state.db.from("students").delete().eq("id", id)); 
-      flash("Student deleted."); 
-      students(); 
-    } catch (err) { 
-      flash(/foreign key|violat/i.test(err.message) ? "This student has attendance history and cannot be deleted." : err.message, true); 
-    }
+    try { await api(state.db.from("students").delete().eq("id", id)); flash("Student deleted."); students(); }
+    catch (err) { flash(/foreign key|violat/i.test(err.message) ? "This student has attendance history and cannot be deleted." : err.message, true); }
   }
 
-  // --- Classes Page ---
+  // --- Classes ---
   async function classes() {
     setTemplate("#classes-template"); 
     await getClasses(); 
     const admin = isAdmin();
-    
     $("#classes-table").innerHTML = state.classes.length ? 
       `<div class="table-wrap"><table><thead><tr><th>Class</th><th>Section</th><th>Academic year</th><th>Teacher</th>${admin ? "<th>Actions</th>" : ""}</tr></thead><tbody>${state.classes.map(c => `<tr data-id="${c.id}"><td>${esc(c.name)}</td><td>${esc(c.section || "—")}</td><td>${esc(c.academic_year)}</td><td>${esc(c.teachers?.name || "Unassigned")}</td>${admin ? `<td class="row-actions"><button class="text-button edit-class" type="button">Edit</button><button class="text-button danger delete-class" type="button">Delete</button></td>` : ""}</tr>`).join("")}</tbody></table></div>` : 
       empty("No classes found.");
-    
     if (admin) {
       $("#new-class").onclick = () => showClassForm();
       $$(".edit-class").forEach(btn => btn.onclick = () => showClassForm(state.classes.find(c => c.id === btn.closest("tr").dataset.id)));
@@ -509,48 +398,29 @@
     e.preventDefault(); 
     const f = new FormData(e.target); 
     try { 
-      await api(state.db.from("classes").insert({ 
-        name:f.get("name"), 
-        section:f.get("section"), 
-        academic_year:f.get("year"), 
-        teacher_id:f.get("teacher") || null 
-      })); 
+      await api(state.db.from("classes").insert({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null })); 
       flash("Class created."); 
       classes(); 
-    } catch (err) { 
-      flash(err.message, true); 
-    } 
+    } catch (err) { flash(err.message, true); } 
   }
 
   async function updateClass(e, id) { 
     e.preventDefault(); 
     const f = new FormData(e.target); 
     try { 
-      await api(state.db.from("classes").update({ 
-        name:f.get("name"), 
-        section:f.get("section"), 
-        academic_year:f.get("year"), 
-        teacher_id:f.get("teacher") || null 
-      }).eq("id", id)); 
+      await api(state.db.from("classes").update({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null }).eq("id", id)); 
       flash("Class updated."); 
       classes(); 
-    } catch (err) { 
-      flash(err.message, true); 
-    } 
+    } catch (err) { flash(err.message, true); } 
   }
 
   async function deleteClass(id) {
     if (!confirm("Delete this class? This cannot be undone.")) return;
-    try { 
-      await api(state.db.from("classes").delete().eq("id", id)); 
-      flash("Class deleted."); 
-      classes(); 
-    } catch (err) { 
-      flash(/foreign key|violat/i.test(err.message) ? "This class still has students assigned and cannot be deleted." : err.message, true); 
-    }
+    try { await api(state.db.from("classes").delete().eq("id", id)); flash("Class deleted."); classes(); }
+    catch (err) { flash(/foreign key|violat/i.test(err.message) ? "This class still has students assigned and cannot be deleted." : err.message, true); }
   }
 
-  // --- Teachers Page ---
+  // --- Teachers ---
   async function teachers() {
     if (!isAdmin()) return navigate("dashboard"); 
     setTemplate("#teachers-template");
@@ -588,10 +458,7 @@
     catch (err) { flash(err.message, true); }
   }
 
-  // ============================================================
-  // ===== REPORTS PAGE =====
-  // ============================================================
-  
+  // --- Reports ---
   async function reports() {
     setTemplate("#reports-template"); 
     await getClasses(); 
@@ -618,73 +485,47 @@
     applyReportView();
   }
 
-  // ============================================================
-  // ===== UPDATED runReport() with Holiday & Designated Day Counts =====
-  // ============================================================
-
   async function runReport() {
     const from = document.getElementById('report-from').value;
     const to = document.getElementById('report-to').value;
     const classId = document.getElementById('report-class').value;
     const studentId = document.getElementById('report-student').value;
-    
     if (!from || !to || from > to) return flash("Choose a valid date range.", true);
-    
-    // Get sessions in date range
     let q = state.db.from("attendance_sessions").select("id,attendance_date,class_id,classes(name,section)")
       .gte("attendance_date", from).lte("attendance_date", to).order("attendance_date");
     if (classId) q = q.eq("class_id", classId);
     const sessions = await api(q);
     const ids = sessions.map(s => s.id);
-    
-    // Get attendance records
     let records = ids.length ? await api(state.db.from("attendance_records")
       .select("id,session_id,student_id,status,remarks,students(name,roll_number)")
       .in("session_id", ids)) : [];
     if (studentId) records = records.filter(r => r.student_id === studentId);
-    
-    // Get holidays and designated days in the date range
     let holidayQuery = state.db.from("holidays").select("date,class_id").gte("date", from).lte("date", to);
     let designatedQuery = state.db.from("designated_days").select("date,class_id").gte("date", from).lte("date", to);
-    
     if (classId) {
       holidayQuery = holidayQuery.eq("class_id", classId);
       designatedQuery = designatedQuery.eq("class_id", classId);
     }
-    
     const holidays = await api(holidayQuery);
     const designatedDays = await api(designatedQuery);
-    
-    // Count holidays and designated days per student
     const holidayDates = new Set(holidays.map(h => h.date));
     const designatedDates = new Set(designatedDays.map(d => d.date));
-    
     const bySession = Object.fromEntries(sessions.map(s => [s.id, s]));
     state.reportRows = records.map(r => {
       const session = bySession[r.session_id];
       const date = session?.attendance_date || '';
       return {
-        id: r.id,
-        date: date,
-        class: session?.classes?.name ? `${session.classes.name} ${session.classes.section || ''}`.trim() : '',
-        student: r.students?.name || '',
-        roll: r.students?.roll_number || '',
-        status: r.status,
-        remarks: r.remarks || '',
-        isHoliday: holidayDates.has(date),
-        isDesignated: designatedDates.has(date)
+        id: r.id, date: date, class: session?.classes?.name ? `${session.classes.name} ${session.classes.section || ''}`.trim() : '',
+        student: r.students?.name || '', roll: r.students?.roll_number || '', status: r.status, remarks: r.remarks || '',
+        isHoliday: holidayDates.has(date), isDesignated: designatedDates.has(date)
       };
     });
-    
     state.reportRows.sort((a, b) => (a.roll || '').localeCompare(b.roll || '', undefined, { numeric: true }));
-    
-    // Summary stats
     const present = state.reportRows.filter(r => r.status === "present").length;
     const absent = state.reportRows.filter(r => r.status === "absent").length;
     const leave = state.reportRows.filter(r => r.status === "leave").length;
     const totalHolidays = state.reportRows.filter(r => r.isHoliday).length;
     const totalDesignated = state.reportRows.filter(r => r.isDesignated).length;
-    
     document.getElementById('report-summary').innerHTML = `
       <article><span>Present</span><strong>${present}</strong></article>
       <article><span>Absent</span><strong>${absent}</strong></article>
@@ -692,12 +533,10 @@
       <article><span>Holidays</span><strong>${totalHolidays}</strong></article>
       <article><span>Designated Days</span><strong>${totalDesignated}</strong></article>
     `;
-    
     const admin = isAdmin();
     document.getElementById('report-table').innerHTML = state.reportRows.length ? 
       `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th>${admin ? '<th>Holiday</th><th>Designated</th>' : ''}</tr></thead><tbody>${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td>${admin ? `<select class="status-edit" data-id="${r.id}"><option value="present" ${r.status === "present" ? "selected" : ""}>Present</option><option value="absent" ${r.status === "absent" ? "selected" : ""}>Absent</option><option value="leave" ${r.status === "leave" ? "selected" : ""}>Leave</option></select>` : `<span class="status ${r.status}">${esc(r.status)}</span>`}</td><td>${esc(r.remarks || "—")}</td>${admin ? `<td>${r.isHoliday ? '✅' : '—'}</td><td>${r.isDesignated ? '⭐' : '—'}</td>` : ''}</tr>`).join("")}</tbody></table></div>` : 
       empty("No attendance records match this report.");
-    
     if (admin) document.querySelectorAll(".status-edit").forEach(sel => sel.onchange = () => updateRecordStatus(sel.dataset.id, sel.value));
     renderStudentSummary();
     applyReportView();
@@ -743,330 +582,117 @@
     XLSX.writeFile(book, `attendance-report${suffix}-${isoToday()}.xlsx`);
   }
 
-  // ============================================================
-  // ===== IMPROVED PDF EXPORT =====
-  // ============================================================
-
+  // --- PDF Export ---
   function exportPDF() {
     if (!state.reportRows.length) return flash("Run a report with data before exporting.", true);
     if (!(isAdmin() || state.teacher?.can_export !== false)) return flash("Report downloads are disabled for your account.", true);
-    
     const rows = computeStudentSummary();
-    
-    // Get date range from report filters
     const fromDate = document.getElementById('report-from')?.value || '';
     const toDate = document.getElementById('report-to')?.value || '';
     const classFilter = document.getElementById('report-class')?.value || '';
     const className = classFilter ? state.classes.find(c => c.id === classFilter)?.name || '' : 'All Classes';
-    
-    // Build HTML for PDF
     let html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Attendance Report</title>
-        <style>
-          * { box-sizing: border-box; }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            padding: 30px;
-            color: #1a1a2e;
-            max-width: 1000px;
-            margin: 0 auto;
-            background: #ffffff;
-          }
-          .header {
-            text-align: center;
-            border-bottom: 3px solid #4f46e5;
-            padding-bottom: 15px;
-            margin-bottom: 20px;
-          }
-          .header h1 {
-            font-size: 28px;
-            color: #1a1a2e;
-            margin: 0;
-          }
-          .header h1 span {
-            color: #4f46e5;
-          }
-          .header h2 {
-            font-weight: 400;
-            color: #6b7280;
-            margin: 5px 0 0 0;
-            font-size: 18px;
-          }
-          .header p {
-            color: #9ca3af;
-            font-size: 13px;
-            margin: 5px 0 0 0;
-          }
-          .report-meta {
-            display: flex;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            background: #f8fafc;
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 13px;
-            border: 1px solid #e5e7eb;
-          }
-          .report-meta .meta-item {
-            margin: 3px 0;
-          }
-          .report-meta .meta-item strong {
-            color: #1a1a2e;
-          }
-          .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-            gap: 12px;
-            margin-bottom: 25px;
-          }
-          .stats-grid .stat-box {
-            background: #f8fafc;
-            padding: 12px 15px;
-            border-radius: 8px;
-            text-align: center;
-            border: 1px solid #e5e7eb;
-          }
-          .stats-grid .stat-box .number {
-            font-size: 22px;
-            font-weight: bold;
-            color: #1a1a2e;
-            display: block;
-          }
-          .stats-grid .stat-box .label {
-            font-size: 12px;
-            color: #6b7280;
-            display: block;
-            margin-top: 2px;
-          }
-          .stats-grid .stat-box.highlight {
-            background: #eef2ff;
-            border-color: #4f46e5;
-          }
-          .stats-grid .stat-box.highlight .number {
-            color: #4f46e5;
-          }
-          .stats-grid .stat-box.green {
-            background: #f0fdf4;
-            border-color: #86efac;
-          }
-          .stats-grid .stat-box.green .number {
-            color: #166534;
-          }
-          .stats-grid .stat-box.red {
-            background: #fef2f2;
-            border-color: #fca5a5;
-          }
-          .stats-grid .stat-box.red .number {
-            color: #991b1b;
-          }
-          .stats-grid .stat-box.yellow {
-            background: #fefce8;
-            border-color: #fde047;
-          }
-          .stats-grid .stat-box.yellow .number {
-            color: #854d0e;
-          }
-          .section-title {
-            font-size: 18px;
-            color: #1a1a2e;
-            margin: 25px 0 12px 0;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e5e7eb;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-            margin-top: 10px;
-          }
-          table th {
-            background: #f1f5f9;
-            color: #1a1a2e;
-            font-weight: 600;
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 2px solid #e2e8f0;
-          }
-          table td {
-            padding: 8px 12px;
-            border-bottom: 1px solid #e2e8f0;
-          }
-          table tr:nth-child(even) {
-            background: #fafafa;
-          }
-          .badge {
-            display: inline-block;
-            padding: 2px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 500;
-          }
-          .badge.present { background: #dcfce7; color: #166534; }
-          .badge.absent { background: #fef2f2; color: #991b1b; }
-          .badge.leave { background: #fef3c7; color: #92400e; }
-          .footer {
-            text-align: center;
-            color: #9ca3af;
-            font-size: 12px;
-            margin-top: 30px;
-            border-top: 1px solid #e5e7eb;
-            padding-top: 15px;
-          }
-          .footer p {
-            margin: 3px 0;
-          }
-          @media print {
-            body { padding: 15px; }
-            .stats-grid .stat-box { break-inside: avoid; }
-            table { page-break-inside: auto; }
-            tr { page-break-inside: avoid; }
-          }
-          @media (max-width: 600px) {
-            body { padding: 10px; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-            .report-meta { flex-direction: column; gap: 5px; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Nous <span>Complex</span></h1>
-          <h2>Attendance Report</h2>
-          <p>Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p>
-        </div>
-        
+      <!DOCTYPE html><html><head><meta charset="utf-8"><title>Attendance Report</title>
+      <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; padding: 30px; color: #1a1a2e; max-width: 1000px; margin: 0 auto; background: #ffffff; }
+        .header { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 15px; margin-bottom: 20px; }
+        .header h1 { font-size: 28px; color: #1a1a2e; margin: 0; }
+        .header h1 span { color: #4f46e5; }
+        .header h2 { font-weight: 400; color: #6b7280; margin: 5px 0 0 0; font-size: 18px; }
+        .header p { color: #9ca3af; font-size: 13px; margin: 5px 0 0 0; }
+        .report-meta { display: flex; justify-content: space-between; flex-wrap: wrap; background: #f8fafc; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e5e7eb; }
+        .report-meta .meta-item { margin: 3px 0; }
+        .report-meta .meta-item strong { color: #1a1a2e; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 25px; }
+        .stats-grid .stat-box { background: #f8fafc; padding: 12px 15px; border-radius: 8px; text-align: center; border: 1px solid #e5e7eb; }
+        .stats-grid .stat-box .number { font-size: 22px; font-weight: bold; color: #1a1a2e; display: block; }
+        .stats-grid .stat-box .label { font-size: 12px; color: #6b7280; display: block; margin-top: 2px; }
+        .stats-grid .stat-box.highlight { background: #eef2ff; border-color: #4f46e5; }
+        .stats-grid .stat-box.highlight .number { color: #4f46e5; }
+        .stats-grid .stat-box.green { background: #f0fdf4; border-color: #86efac; }
+        .stats-grid .stat-box.green .number { color: #166534; }
+        .stats-grid .stat-box.red { background: #fef2f2; border-color: #fca5a5; }
+        .stats-grid .stat-box.red .number { color: #991b1b; }
+        .stats-grid .stat-box.yellow { background: #fefce8; border-color: #fde047; }
+        .stats-grid .stat-box.yellow .number { color: #854d0e; }
+        .section-title { font-size: 18px; color: #1a1a2e; margin: 25px 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #e5e7eb; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+        table th { background: #f1f5f9; color: #1a1a2e; font-weight: 600; padding: 10px 12px; text-align: left; border-bottom: 2px solid #e2e8f0; }
+        table td { padding: 8px 12px; border-bottom: 1px solid #e2e8f0; }
+        table tr:nth-child(even) { background: #fafafa; }
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+        .badge.present { background: #dcfce7; color: #166534; }
+        .badge.absent { background: #fef2f2; color: #991b1b; }
+        .badge.leave { background: #fef3c7; color: #92400e; }
+        .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 15px; }
+        .footer p { margin: 3px 0; }
+        @media print { body { padding: 15px; } .stats-grid .stat-box { break-inside: avoid; } table { page-break-inside: auto; } tr { page-break-inside: avoid; } }
+        @media (max-width: 600px) { body { padding: 10px; } .stats-grid { grid-template-columns: 1fr 1fr; } .report-meta { flex-direction: column; gap: 5px; } }
+      </style>
+      </head><body>
+        <div class="header"><h1>Nous <span>Complex</span></h1><h2>Attendance Report</h2><p>Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
         <div class="report-meta">
-          <span class="meta-item"><strong>📅 Date Range:</strong> ${fromDate} to ${toDate}</span>
-          <span class="meta-item"><strong>📚 Class:</strong> ${className}</span>
-          <span class="meta-item"><strong>👨‍🎓 Total Students:</strong> ${rows.length}</span>
-          <span class="meta-item"><strong>📝 Total Records:</strong> ${state.reportRows.length}</span>
+          <span class="meta-item"><strong>Date Range:</strong> ${fromDate} to ${toDate}</span>
+          <span class="meta-item"><strong>Class:</strong> ${className}</span>
+          <span class="meta-item"><strong>Total Students:</strong> ${rows.length}</span>
+          <span class="meta-item"><strong>Total Records:</strong> ${state.reportRows.length}</span>
         </div>
-        
         <div class="stats-grid">
-          <div class="stat-box green">
-            <span class="number">${state.reportRows.filter(r => r.status === "present").length}</span>
-            <span class="label">✅ Present</span>
-          </div>
-          <div class="stat-box red">
-            <span class="number">${state.reportRows.filter(r => r.status === "absent").length}</span>
-            <span class="label">❌ Absent</span>
-          </div>
-          <div class="stat-box yellow">
-            <span class="number">${state.reportRows.filter(r => r.status === "leave").length}</span>
-            <span class="label">📋 Leave</span>
-          </div>
-          <div class="stat-box highlight">
-            <span class="number">${state.reportRows.filter(r => r.isHoliday).length}</span>
-            <span class="label">🎉 Holidays</span>
-          </div>
-          <div class="stat-box highlight">
-            <span class="number">${state.reportRows.filter(r => r.isDesignated).length}</span>
-            <span class="label">⭐ Designated Days</span>
-          </div>
+          <div class="stat-box green"><span class="number">${state.reportRows.filter(r => r.status === "present").length}</span><span class="label">Present</span></div>
+          <div class="stat-box red"><span class="number">${state.reportRows.filter(r => r.status === "absent").length}</span><span class="label">Absent</span></div>
+          <div class="stat-box yellow"><span class="number">${state.reportRows.filter(r => r.status === "leave").length}</span><span class="label">Leave</span></div>
+          <div class="stat-box highlight"><span class="number">${state.reportRows.filter(r => r.isHoliday).length}</span><span class="label">Holidays</span></div>
+          <div class="stat-box highlight"><span class="number">${state.reportRows.filter(r => r.isDesignated).length}</span><span class="label">Designated Days</span></div>
         </div>
-        
-        <h3 class="section-title">📊 Student Summary</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Roll No.</th>
-              <th>Student</th>
-              <th>Present</th>
-              <th>Absent</th>
-              <th>Leave</th>
-              <th>Total</th>
-              <th>Attendance %</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map(r => `<tr>
-              <td>${esc(r.roll)}</td>
-              <td>${esc(r.student)}</td>
-              <td>${r.present}</td>
-              <td>${r.absent}</td>
-              <td>${r.leave}</td>
-              <td>${r.total}</td>
-              <td><strong>${r.pct}%</strong></td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-        
-        <h3 class="section-title">📋 Detailed Records</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Roll</th>
-              <th>Student</th>
-              <th>Date</th>
-              <th>Class</th>
-              <th>Status</th>
-              <th>Remarks</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${state.reportRows.map(r => `<tr>
-              <td>${esc(r.roll)}</td>
-              <td>${esc(r.student)}</td>
-              <td>${esc(r.date)}</td>
-              <td>${esc(r.class)}</td>
-              <td><span class="badge ${r.status}">${esc(r.status)}</span></td>
-              <td>${esc(r.remarks || "—")}</td>
-            </tr>`).join("")}
-          </tbody>
-        </table>
-        
-        <div class="footer">
-          <p>📊 Report generated from <strong>Nous Complex Attendance Portal</strong></p>
-          <p>© ${new Date().getFullYear()} Nous Complex • All Rights Reserved</p>
-        </div>
-      </body>
-      </html>
+        <h3 class="section-title">Student Summary</h3>
+        <table><thead><tr><th>Roll No.</th><th>Student</th><th>Present</th><th>Absent</th><th>Leave</th><th>Total</th><th>Attendance %</th></tr></thead><tbody>
+          ${rows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${r.present}</td><td>${r.absent}</td><td>${r.leave}</td><td>${r.total}</td><td><strong>${r.pct}%</strong></td></tr>`).join("")}
+        </tbody></table>
+        <h3 class="section-title">Detailed Records</h3>
+        <table><thead><tr><th>Roll</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>
+          ${state.reportRows.map(r => `<tr><td>${esc(r.roll)}</td><td>${esc(r.student)}</td><td>${esc(r.date)}</td><td>${esc(r.class)}</td><td><span class="badge ${r.status}">${esc(r.status)}</span></td><td>${esc(r.remarks || "—")}</td></tr>`).join("")}
+        </tbody></table>
+        <div class="footer"><p>Report generated from <strong>Nous Complex Attendance Portal</strong></p><p>© ${new Date().getFullYear()} Nous Complex • All Rights Reserved</p></div>
+      </body></html>
     `;
-    
-    // Open print dialog
     const win = window.open('', '_blank', 'width=1000,height=800,scrollbars=yes');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      setTimeout(() => {
-        win.print();
-      }, 800);
-    } else {
-      flash("Please allow popups to export PDF.", true);
-    }
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => { win.print(); }, 800); } 
+    else { flash("Please allow popups to export PDF.", true); }
   }
 
   // ============================================================
-  // ===== CALENDAR VIEW FUNCTIONS =====
+  // ===== CALENDAR VIEW - Interactive with Click to Mark =====
   // ============================================================
 
   let calendarDate = new Date();
+  let selectedDate = null;
 
   async function calendar() {
     if (!isAdmin()) return navigate("dashboard");
     setTemplate("#calendar-template");
     
+    // Populate class filter
+    await getClasses();
+    const filter = document.getElementById('calendar-class-filter');
+    filter.innerHTML = `<option value="">All Classes</option>` + 
+      state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
+    
     // Set up navigation
-    document.getElementById('calendar-prev').onclick = () => {
-      calendarDate.setMonth(calendarDate.getMonth() - 1);
-      renderCalendar();
-    };
-    document.getElementById('calendar-next').onclick = () => {
-      calendarDate.setMonth(calendarDate.getMonth() + 1);
-      renderCalendar();
-    };
-    document.getElementById('calendar-today').onclick = () => {
-      calendarDate = new Date();
-      renderCalendar();
-    };
+    document.getElementById('calendar-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalendar(); };
+    document.getElementById('calendar-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalendar(); };
+    document.getElementById('calendar-today').onclick = () => { calendarDate = new Date(); renderCalendar(); };
+    
+    // Action buttons
+    document.getElementById('mark-holiday').onclick = () => markSelectedDate('holiday');
+    document.getElementById('mark-designated').onclick = () => markSelectedDate('designated');
+    document.getElementById('clear-selected').onclick = clearSelectedDate;
     document.getElementById('calendar-detail-close').onclick = () => {
       document.getElementById('calendar-details').style.display = 'none';
     };
+    
+    // Class filter change
+    filter.onchange = renderCalendar;
     
     await renderCalendar();
     applyRoleVisibility();
@@ -1075,22 +701,17 @@
   async function renderCalendar() {
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
-    
-    // Update header
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     document.getElementById('calendar-month-year').textContent = `${monthNames[month]} ${year}`;
     
-    // Get first day of month and number of days
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
     
-    // Get classes for filtering
     await getClasses();
     const classId = document.getElementById('calendar-class-filter')?.value || '';
     
-    // Get holidays and designated days for this month
     const monthStart = new Date(year, month, 1).toISOString().slice(0, 10);
     const monthEnd = new Date(year, month + 1, 0).toISOString().slice(0, 10);
     
@@ -1105,159 +726,211 @@
     const holidays = await api(holidayQuery);
     const designatedDays = await api(designatedQuery);
     
-    // Create maps for quick lookup
     const holidayMap = {};
     const designatedMap = {};
+    holidays.forEach(h => { if (!holidayMap[h.date]) holidayMap[h.date] = []; holidayMap[h.date].push(h); });
+    designatedDays.forEach(d => { if (!designatedMap[d.date]) designatedMap[d.date] = []; designatedMap[d.date].push(d); });
     
-    holidays.forEach(h => {
-      if (!holidayMap[h.date]) holidayMap[h.date] = [];
-      holidayMap[h.date].push(h);
-    });
-    
-    designatedDays.forEach(d => {
-      if (!designatedMap[d.date]) designatedMap[d.date] = [];
-      designatedMap[d.date].push(d);
-    });
-    
-    // Build calendar grid
     const grid = document.getElementById('calendar-grid');
-    let html = `<table><thead><tr>
-      <th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th>
-    </tr></thead><tbody>`;
+    let html = `<table><thead><tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr></thead><tbody>`;
     
     let day = 1;
     let col = firstDay;
-    
-    // Empty cells for first week
     html += `<tr>`;
-    for (let i = 0; i < firstDay; i++) {
-      html += `<td class="calendar-empty"></td>`;
-    }
+    for (let i = 0; i < firstDay; i++) html += `<td class="calendar-empty"></td>`;
     
     while (day <= daysInMonth) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const isToday = dateStr === todayStr;
       const isHoliday = holidayMap[dateStr] && holidayMap[dateStr].length > 0;
       const isDesignated = designatedMap[dateStr] && designatedMap[dateStr].length > 0;
+      const isSelected = dateStr === selectedDate;
       
       let cellClass = 'calendar-day';
       if (isToday) cellClass += ' today';
       if (isHoliday && isDesignated) cellClass += ' both';
       else if (isHoliday) cellClass += ' holiday';
       else if (isDesignated) cellClass += ' designated';
+      if (isSelected) cellClass += ' selected';
       
       let tooltip = `${day} ${monthNames[month]} ${year}`;
       let detailData = [];
-      
       if (isHoliday) {
         const reasons = holidayMap[dateStr].map(h => h.reason || 'Holiday').join(', ');
-        tooltip += `\n🎉 Holiday: ${reasons}`;
-        detailData.push({ type: '🎉 Holiday', reason: reasons, items: holidayMap[dateStr] });
+        tooltip += `\nHoliday: ${reasons}`;
+        detailData.push({ type: 'Holiday', reason: reasons, items: holidayMap[dateStr] });
       }
       if (isDesignated) {
         const reasons = designatedMap[dateStr].map(d => d.reason || 'Designated Day').join(', ');
-        tooltip += `\n⭐ Designated: ${reasons}`;
-        detailData.push({ type: '⭐ Designated', reason: reasons, items: designatedMap[dateStr] });
+        tooltip += `\nDesignated: ${reasons}`;
+        detailData.push({ type: 'Designated Day', reason: reasons, items: designatedMap[dateStr] });
       }
       
-      const dateDisplay = day;
-      
-      html += `<td class="${cellClass}" data-date="${dateStr}" data-detail='${JSON.stringify(detailData).replace(/'/g, "&#39;")}' title="${esc(tooltip)}">
-        <span class="day-number">${dateDisplay}</span>
-        ${isHoliday ? '<span class="badge-indicator holiday-badge">🎉</span>' : ''}
-        ${isDesignated ? '<span class="badge-indicator designated-badge">⭐</span>' : ''}
+      html += `<td class="${cellClass}" data-date="${dateStr}" data-detail='${JSON.stringify(detailData).replace(/'/g, "&#39;")}' title="${esc(tooltip)}" onclick="window.selectCalendarDate && window.selectCalendarDate('${dateStr}')">
+        <span class="day-number">${day}</span>
+        ${isHoliday ? '<span class="badge-indicator">🎉</span>' : ''}
+        ${isDesignated ? '<span class="badge-indicator">⭐</span>' : ''}
       </td>`;
       
-      day++;
-      col++;
-      
-      if (col > 6) {
-        col = 0;
-        html += `</tr><tr>`;
-      }
+      day++; col++;
+      if (col > 6) { col = 0; html += `</tr><tr>`; }
     }
     
-    // Fill remaining cells in last week
-    while (col <= 6) {
-      html += `<td class="calendar-empty"></td>`;
-      col++;
-    }
-    html += `</tr>`;
-    html += `</tbody></table>`;
-    
+    while (col <= 6) { html += `<td class="calendar-empty"></td>`; col++; }
+    html += `</tr></tbody></table>`;
     grid.innerHTML = html;
     
-    // Add click events to calendar days
+    // Update selected info
+    if (selectedDate) {
+      document.getElementById('selected-info').style.display = 'block';
+      document.getElementById('selected-date-text').textContent = selectedDate;
+      // Check if date has existing events
+      const isHoliday = holidayMap[selectedDate] && holidayMap[selectedDate].length > 0;
+      const isDesignated = designatedMap[selectedDate] && designatedMap[selectedDate].length > 0;
+      let infoText = selectedDate;
+      if (isHoliday) infoText += ' 🎉 Holiday';
+      if (isDesignated) infoText += ' ⭐ Designated';
+      document.getElementById('selected-date-text').textContent = infoText;
+    } else {
+      document.getElementById('selected-info').style.display = 'none';
+    }
+    
+    // Add click handlers
     document.querySelectorAll('.calendar-day').forEach(cell => {
       cell.addEventListener('click', function() {
         const date = this.dataset.date;
-        const detailData = JSON.parse(this.dataset.detail || '[]');
-        if (detailData.length > 0) {
-          showCalendarDetails(date, detailData);
-        } else {
-          document.getElementById('calendar-details').style.display = 'block';
-          document.getElementById('calendar-detail-date').textContent = `📅 ${date}`;
-          document.getElementById('calendar-detail-content').innerHTML = '<p class="muted" style="margin:0;">No events on this date.</p>';
-        }
+        selectedDate = date;
+        renderCalendar();
+        showDateDetails(date);
       });
     });
-    
-    // Add class filter if not present
-    if (!document.getElementById('calendar-class-filter')) {
-      const legend = document.querySelector('.calendar-legend');
-      if (legend) {
-        const filterDiv = document.createElement('div');
-        filterDiv.style.marginTop = '10px';
-        filterDiv.innerHTML = `
-          <label style="font-weight:500; font-size:13px; color:#374151;">Filter by Class:
-            <select id="calendar-class-filter" style="margin-left:8px; padding:6px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:#f9fafb;">
-              <option value="">All Classes</option>
-              ${state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("")}
-            </select>
-          </label>
-        `;
-        legend.parentNode.insertBefore(filterDiv, legend.nextSibling);
-        
-        document.getElementById('calendar-class-filter').onchange = renderCalendar;
-      }
-    }
   }
 
-  function showCalendarDetails(date, details) {
+  // Make selectCalendarDate available globally for onclick
+  window.selectCalendarDate = function(date) {
+    selectedDate = date;
+    renderCalendar();
+    showDateDetails(date);
+  };
+
+  function showDateDetails(date) {
     const detailContainer = document.getElementById('calendar-details');
     const detailDate = document.getElementById('calendar-detail-date');
     const detailContent = document.getElementById('calendar-detail-content');
     
+    // Get details from the clicked cell
+    const cell = document.querySelector(`.calendar-day[data-date="${date}"]`);
+    if (!cell) { detailContainer.style.display = 'none'; return; }
+    
+    const detailData = JSON.parse(cell.dataset.detail || '[]');
     detailContainer.style.display = 'block';
     detailDate.textContent = `📅 ${date}`;
     
-    let html = '';
-    details.forEach(d => {
-      html += `<div style="margin:5px 0; padding:8px 12px; background:white; border-radius:6px; border-left:4px solid ${d.type.includes('Holiday') ? '#f59e0b' : '#3b82f6'};">
-        <strong>${d.type}</strong>
-        <span style="color:#6b7280; margin-left:10px;">${esc(d.reason)}</span>
-        ${d.items && d.items.length > 1 ? `<span style="font-size:12px; color:#6b7280; margin-left:10px;">(${d.items.length} entries)</span>` : ''}
-      </div>`;
-    });
-    
-    detailContent.innerHTML = html || '<p class="muted" style="margin:0;">No events on this date.</p>';
+    if (detailData.length > 0) {
+      let html = '';
+      detailData.forEach(d => {
+        html += `<div style="margin:5px 0; padding:8px 12px; background:white; border-radius:6px; border-left:4px solid ${d.type === 'Holiday' ? '#f59e0b' : '#3b82f6'};">
+          <strong>${d.type}</strong>
+          <span style="color:#6b7280; margin-left:10px;">${esc(d.reason)}</span>
+        </div>`;
+      });
+      detailContent.innerHTML = html;
+    } else {
+      detailContent.innerHTML = '<p class="muted" style="margin:0;">No events on this date. Click "Mark Holiday" or "Mark Designated" to add one.</p>';
+    }
   }
 
-  // --- Admin Tools Page ---
+  async function markSelectedDate(type) {
+    if (!selectedDate) {
+      flash("Please click on a date first to select it.", true);
+      return;
+    }
+    
+    const classId = document.getElementById('calendar-class-filter')?.value || null;
+    const table = type === 'holiday' ? 'holidays' : 'designated_days';
+    const label = type === 'holiday' ? 'Holiday' : 'Designated Day';
+    
+    // Check if already exists
+    let query = state.db.from(table).select("id").eq("date", selectedDate);
+    if (classId) query = query.eq("class_id", classId);
+    else query = query.is("class_id", null);
+    const existing = await api(query.maybeSingle());
+    
+    if (existing) {
+      flash(`${label} already exists for this date.`, true);
+      return;
+    }
+    
+    try {
+      await api(state.db.from(table).insert({ 
+        class_id: classId, 
+        date: selectedDate, 
+        reason: prompt(`Enter reason for ${label}:`, label) || label
+      }));
+      flash(`${label} marked for ${selectedDate}.`);
+      renderCalendar();
+    } catch (err) {
+      flash(err.message, true);
+    }
+  }
+
+  async function clearSelectedDate() {
+    if (!selectedDate) {
+      flash("Please click on a date first to select it.", true);
+      return;
+    }
+    
+    const classId = document.getElementById('calendar-class-filter')?.value || null;
+    
+    // Check both tables
+    let holidayQuery = state.db.from("holidays").select("id").eq("date", selectedDate);
+    let designatedQuery = state.db.from("designated_days").select("id").eq("date", selectedDate);
+    
+    if (classId) {
+      holidayQuery = holidayQuery.eq("class_id", classId);
+      designatedQuery = designatedQuery.eq("class_id", classId);
+    } else {
+      holidayQuery = holidayQuery.is("class_id", null);
+      designatedQuery = designatedQuery.is("class_id", null);
+    }
+    
+    const holiday = await api(holidayQuery.maybeSingle());
+    const designated = await api(designatedQuery.maybeSingle());
+    
+    if (!holiday && !designated) {
+      flash("No events found for this date.", true);
+      return;
+    }
+    
+    let msg = "Remove ";
+    if (holiday) msg += "Holiday";
+    if (holiday && designated) msg += " & ";
+    if (designated) msg += "Designated Day";
+    msg += ` for ${selectedDate}?`;
+    
+    if (!confirm(msg)) return;
+    
+    try {
+      if (holiday) await api(state.db.from("holidays").delete().eq("id", holiday.id));
+      if (designated) await api(state.db.from("designated_days").delete().eq("id", designated.id));
+      flash(`Cleared events for ${selectedDate}.`);
+      renderCalendar();
+    } catch (err) {
+      flash(err.message, true);
+    }
+  }
+
+  // --- Admin Tools ---
   async function adminTools() {
     if (!isAdmin()) return navigate("dashboard");
     setTemplate("#admin-tools-template");
     await getClasses();
     
-    // ===== Populate dropdowns =====
     const classOptionsHtml = `<option value="">All Classes</option>` + 
       state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
     
     document.getElementById('clear-class').innerHTML = classOptionsHtml;
-    document.getElementById('holiday-class').innerHTML = classOptionsHtml;
-    document.getElementById('designated-class').innerHTML = classOptionsHtml;
     
-    // ===== Clear attendance =====
     document.getElementById('clear-class').onchange = async () => {
       const classId = document.getElementById('clear-class').value;
       if (classId) {
@@ -1274,283 +947,34 @@
     monthAgo.setMonth(monthAgo.getMonth() - 1);
     document.getElementById('clear-from').value = monthAgo.toISOString().slice(0, 10);
     document.getElementById('clear-to').value = isoToday();
-    
     document.getElementById('clear-attendance').onclick = clearAttendanceData;
-    
-    // ===== Holidays =====
-    document.getElementById('holiday-date').value = isoToday();
-    document.getElementById('add-holiday').onclick = addHoliday;
-    document.getElementById('bulk-holiday').onclick = () => {
-      const form = document.getElementById('holiday-bulk-form');
-      form.style.display = form.style.display === 'none' ? 'block' : 'none';
-      document.getElementById('holiday-from').value = isoToday();
-      document.getElementById('holiday-to').value = isoToday();
-    };
-    document.getElementById('holiday-bulk-submit').onclick = bulkAddHolidays;
-    await loadHolidays();
-    
-    // ===== Designated Days =====
-    document.getElementById('designated-date').value = isoToday();
-    document.getElementById('add-designated').onclick = addDesignatedDay;
-    document.getElementById('bulk-designated').onclick = () => {
-      const form = document.getElementById('designated-bulk-form');
-      form.style.display = form.style.display === 'none' ? 'block' : 'none';
-      document.getElementById('designated-from').value = isoToday();
-      document.getElementById('designated-to').value = isoToday();
-    };
-    document.getElementById('designated-bulk-submit').onclick = bulkAddDesignatedDays;
-    await loadDesignatedDays();
-    
     applyRoleVisibility();
   }
 
-  // ============================================================
-  // ===== HOLIDAYS MANAGEMENT FUNCTIONS (Admin Only) =====
-  // ============================================================
-
-  async function loadHolidays() {
-    try {
-      const holidays = await api(state.db.from("holidays").select("id,class_id,date,reason,classes(name,section)").order("date", { ascending: false }));
-      
-      const list = document.getElementById('holidays-list');
-      if (!list) return;
-      
-      if (holidays.length === 0) {
-        list.innerHTML = '<div class="empty">No holidays set.</div>';
-        return;
-      }
-      
-      list.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Class</th><th>Reason</th><th>Actions</th></tr></thead><tbody>${holidays.map(h => `<tr data-id="${h.id}"><td>${esc(h.date)}</td><td>${h.classes ? esc(h.classes.name) + (h.classes.section ? " — " + esc(h.classes.section) : "") : "All Classes"}</td><td>${esc(h.reason || "—")}</td><td><button class="text-button danger remove-item" data-id="${h.id}" data-type="holiday" style="color:#ef4444;">Remove</button></td></tr>`).join("")}</tbody></table></div>`;
-      
-      document.querySelectorAll('#holidays-list .remove-item').forEach(btn => {
-        btn.onclick = () => removeHoliday(btn.dataset.id);
-      });
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function addHoliday() {
-    const classId = document.getElementById('holiday-class').value || null;
-    const date = document.getElementById('holiday-date').value;
-    const reason = document.getElementById('holiday-reason').value.trim() || "Holiday";
-    
-    if (!date) {
-      flash("Please select a date.", true);
-      return;
-    }
-    
-    try {
-      await api(state.db.from("holidays").insert({ class_id: classId, date, reason }));
-      flash("Holiday added successfully.");
-      document.getElementById('holiday-reason').value = "";
-      await loadHolidays();
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function removeHoliday(id) {
-    if (!confirm("Remove this holiday?")) return;
-    try {
-      await api(state.db.from("holidays").delete().eq("id", id));
-      flash("Holiday removed.");
-      await loadHolidays();
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function bulkAddHolidays() {
-    const classId = document.getElementById('holiday-class').value || null;
-    const fromDate = document.getElementById('holiday-from').value;
-    const toDate = document.getElementById('holiday-to').value;
-    const reason = document.getElementById('holiday-bulk-reason').value.trim() || "Holiday";
-    
-    if (!fromDate || !toDate) {
-      flash("Please select both from and to dates.", true);
-      return;
-    }
-    
-    if (fromDate > toDate) {
-      flash("From date must be before to date.", true);
-      return;
-    }
-    
-    const dates = getDateRange(fromDate, toDate);
-    
-    try {
-      for (const date of dates) {
-        await api(state.db.from("holidays").insert({ class_id: classId, date, reason }));
-      }
-      flash(`Added ${dates.length} holidays.`);
-      document.getElementById('holiday-bulk-reason').value = "";
-      await loadHolidays();
-      document.getElementById('holiday-bulk-form').style.display = 'none';
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  // ============================================================
-  // ===== DESIGNATED DAYS MANAGEMENT FUNCTIONS (Admin Only) =====
-  // ============================================================
-
-  async function loadDesignatedDays() {
-    try {
-      const designated = await api(state.db.from("designated_days").select("id,class_id,date,reason,classes(name,section)").order("date", { ascending: false }));
-      
-      const list = document.getElementById('designated-list');
-      if (!list) return;
-      
-      if (designated.length === 0) {
-        list.innerHTML = '<div class="empty">No designated days set.</div>';
-        return;
-      }
-      
-      list.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Class</th><th>Reason</th><th>Actions</th></tr></thead><tbody>${designated.map(d => `<tr data-id="${d.id}"><td>${esc(d.date)}</td><td>${d.classes ? esc(d.classes.name) + (d.classes.section ? " — " + esc(d.classes.section) : "") : "All Classes"}</td><td>${esc(d.reason || "—")}</td><td><button class="text-button danger remove-item" data-id="${d.id}" data-type="designated" style="color:#ef4444;">Remove</button></td></tr>`).join("")}</tbody></table></div>`;
-      
-      document.querySelectorAll('#designated-list .remove-item').forEach(btn => {
-        btn.onclick = () => removeDesignatedDay(btn.dataset.id);
-      });
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function addDesignatedDay() {
-    const classId = document.getElementById('designated-class').value || null;
-    const date = document.getElementById('designated-date').value;
-    const reason = document.getElementById('designated-reason').value.trim() || "Designated Day";
-    
-    if (!date) {
-      flash("Please select a date.", true);
-      return;
-    }
-    
-    try {
-      await api(state.db.from("designated_days").insert({ class_id: classId, date, reason }));
-      flash("Designated day added successfully.");
-      document.getElementById('designated-reason').value = "";
-      await loadDesignatedDays();
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function removeDesignatedDay(id) {
-    if (!confirm("Remove this designated day?")) return;
-    try {
-      await api(state.db.from("designated_days").delete().eq("id", id));
-      flash("Designated day removed.");
-      await loadDesignatedDays();
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  async function bulkAddDesignatedDays() {
-    const classId = document.getElementById('designated-class').value || null;
-    const fromDate = document.getElementById('designated-from').value;
-    const toDate = document.getElementById('designated-to').value;
-    const reason = document.getElementById('designated-bulk-reason').value.trim() || "Designated Day";
-    
-    if (!fromDate || !toDate) {
-      flash("Please select both from and to dates.", true);
-      return;
-    }
-    
-    if (fromDate > toDate) {
-      flash("From date must be before to date.", true);
-      return;
-    }
-    
-    const dates = getDateRange(fromDate, toDate);
-    
-    try {
-      for (const date of dates) {
-        await api(state.db.from("designated_days").insert({ class_id: classId, date, reason }));
-      }
-      flash(`Added ${dates.length} designated days.`);
-      document.getElementById('designated-bulk-reason').value = "";
-      await loadDesignatedDays();
-      document.getElementById('designated-bulk-form').style.display = 'none';
-    } catch (err) {
-      flash(err.message, true);
-    }
-  }
-
-  // ============================================================
-  // ===== HELPER FUNCTIONS =====
-  // ============================================================
-
-  function getDateRange(from, to) {
-    const dates = [];
-    const current = new Date(from);
-    const end = new Date(to);
-    
-    while (current <= end) {
-      dates.push(current.toISOString().slice(0, 10));
-      current.setDate(current.getDate() + 1);
-    }
-    return dates;
-  }
-
-  // ============================================================
-  // ===== CLEAR ATTENDANCE DATA =====
-  // ============================================================
-
+  // --- Clear Attendance Data ---
   async function clearAttendanceData() {
-    if (!isAdmin()) {
-      flash("Only admins can clear attendance data.", true);
-      return;
-    }
-    
+    if (!isAdmin()) { flash("Only admins can clear attendance data.", true); return; }
     const from = document.getElementById('clear-from').value;
     const to = document.getElementById('clear-to').value;
     const classId = document.getElementById('clear-class').value;
     const studentId = document.getElementById('clear-student').value;
-    
-    if (!from || !to) {
-      flash("Please select both from and to dates.", true);
-      return;
-    }
-    
-    if (from > to) {
-      flash("From date must be before to date.", true);
-      return;
-    }
-    
+    if (!from || !to) { flash("Please select both from and to dates.", true); return; }
+    if (from > to) { flash("From date must be before to date.", true); return; }
     let confirmMsg = `Are you sure you want to delete all attendance records from ${from} to ${to}?`;
-    if (classId) {
-      const cls = state.classes.find(c => c.id === classId);
-      confirmMsg += `\nClass: ${cls ? cls.name + (cls.section ? " — " + cls.section : "") : "Selected"}`;
-    }
-    if (studentId) {
-      const student = await api(state.db.from("students").select("name,roll_number").eq("id", studentId).single());
-      confirmMsg += `\nStudent: ${student ? student.roll_number + " — " + student.name : "Selected"}`;
-    }
+    if (classId) { const cls = state.classes.find(c => c.id === classId); confirmMsg += `\nClass: ${cls ? cls.name + (cls.section ? " — " + cls.section : "") : "Selected"}`; }
+    if (studentId) { const student = await api(state.db.from("students").select("name,roll_number").eq("id", studentId).single()); confirmMsg += `\nStudent: ${student ? student.roll_number + " — " + student.name : "Selected"}`; }
     confirmMsg += "\n\nThis action CANNOT be undone!";
-    
     if (!confirm(confirmMsg)) return;
-    
     try {
       let query = state.db.from("attendance_sessions").select("id").gte("attendance_date", from).lte("attendance_date", to);
       if (classId) query = query.eq("class_id", classId);
       const sessions = await api(query);
       const sessionIds = sessions.map(s => s.id);
-      
-      if (sessionIds.length === 0) {
-        flash("No attendance records found in this date range.", true);
-        return;
-      }
-      
+      if (sessionIds.length === 0) { flash("No attendance records found in this date range.", true); return; }
       let recordsQuery = state.db.from("attendance_records").delete().in("session_id", sessionIds);
       if (studentId) recordsQuery = recordsQuery.eq("student_id", studentId);
       await api(recordsQuery);
-      
       await api(state.db.from("attendance_sessions").delete().in("id", sessionIds));
-      
       flash(`Successfully cleared ${sessionIds.length} session(s) of attendance data.`);
       document.getElementById('clear-result').innerHTML = `<div style="color: green; padding: 10px; background: rgba(34,197,94,0.1); border-radius: 6px;">✅ ${sessionIds.length} session(s) cleared successfully.</div>`;
     } catch (err) {
@@ -1559,10 +983,7 @@
     }
   }
 
-  // ============================================================
-  // ===== SIDEBAR TOGGLE FUNCTIONS =====
-  // ============================================================
-
+  // --- Sidebar Toggle ---
   function openSidebar() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -1579,16 +1000,10 @@
     document.body.style.overflow = '';
   }
 
-  // ============================================================
-  // ===== INIT =====
-  // ============================================================
-
+  // --- Init ---
   function init() {
     const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-      loadingScreen.style.display = 'flex';
-    }
-    
+    if (loadingScreen) loadingScreen.style.display = 'flex';
     if (configured) state.db = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
     if (state.db) {
       state.db.auth.onAuthStateChange((event) => {
@@ -1602,13 +1017,7 @@
     $("#auth-form").onsubmit = signIn; 
     $("#signup-button").onclick = signUp;
     $("#forgot-password-btn").onclick = forgotPassword;
-    $("#signout").onclick = async () => { 
-      await state.db.auth.signOut(); 
-      cachedClasses = null;
-      showAuth(); 
-    };
-    
-    // Reset password modal
+    $("#signout").onclick = async () => { await state.db.auth.signOut(); cachedClasses = null; showAuth(); };
     $("#reset-submit").onclick = resetPassword;
     $("#reset-cancel").onclick = () => {
       $("#reset-modal").classList.remove("show");
@@ -1617,7 +1026,7 @@
       $("#reset-message").textContent = "";
     };
     
-    // ===== MOBILE SIDEBAR TOGGLE =====
+    // Mobile Sidebar Toggle
     const menuToggle = document.getElementById('menu-toggle-btn');
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -1626,28 +1035,13 @@
     if (menuToggle) {
       menuToggle.addEventListener('click', function(e) {
         e.stopPropagation();
-        if (sidebar && sidebar.classList.contains('open')) {
-          closeSidebar();
-        } else {
-          openSidebar();
-        }
+        if (sidebar && sidebar.classList.contains('open')) { closeSidebar(); } 
+        else { openSidebar(); }
       });
     }
-
-    if (overlay) {
-      overlay.addEventListener('click', closeSidebar);
-    }
-
-    if (closeBtn) {
-      closeBtn.addEventListener('click', closeSidebar);
-    }
-
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        closeSidebar();
-      }
-    });
-
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+    if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeSidebar(); });
     window.addEventListener('resize', function() {
       if (window.innerWidth > 768 && sidebar) {
         sidebar.classList.remove('open');
@@ -1655,41 +1049,23 @@
         document.body.style.overflow = '';
       }
     });
-
     document.addEventListener('click', function(e) {
       const navButton = e.target.closest('#nav button[data-page]');
-      if (navButton && window.innerWidth <= 768) {
-        setTimeout(closeSidebar, 300);
-      }
+      if (navButton && window.innerWidth <= 768) setTimeout(closeSidebar, 300);
     });
 
-    // ===== NAVIGATION =====
+    // Navigation
     document.addEventListener('click', function(e) {
       const button = e.target.closest('#nav button[data-page]');
-      if (button) {
-        e.preventDefault();
-        const page = button.dataset.page;
-        if (page) {
-          navigate(page);
-        }
-      }
+      if (button) { e.preventDefault(); const page = button.dataset.page; if (page) navigate(page); }
     });
-    
     document.addEventListener('click', function(e) {
       const goButton = e.target.closest('[data-go]');
-      if (goButton) {
-        const page = goButton.dataset.go;
-        if (page) navigate(page);
-      }
+      if (goButton) { const page = goButton.dataset.go; if (page) navigate(page); }
     });
     
-    if (configured) {
-      loadSession();
-    } else {
-      hideLoadingScreen();
-      ensureConfigured();
-    }
+    if (configured) loadSession();
+    else { hideLoadingScreen(); ensureConfigured(); }
   }
-  
   init();
 })();
