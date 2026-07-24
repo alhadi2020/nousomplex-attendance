@@ -1330,11 +1330,15 @@
     if (sidebar) {
       sidebar.classList.add('open');
       // Hide hamburger button when sidebar/navbar is open.
-      // Uses the .is-hidden class (not inline styles) because the mobile
-      // media query rule `.menu-toggle-btn { display: flex !important; }`
-      // would otherwise override an inline style with higher priority.
+      // Belt-and-suspenders: toggle the .is-hidden class AND force an inline
+      // !important style. Inline !important always wins over any stylesheet
+      // rule (including the mobile media query's `display: flex !important`),
+      // so this hides reliably even if cached/older CSS is still in play.
       const menuToggle = document.getElementById('menu-toggle-btn');
-      if (menuToggle) menuToggle.classList.add('is-hidden');
+      if (menuToggle) {
+        menuToggle.classList.add('is-hidden');
+        menuToggle.style.setProperty('display', 'none', 'important');
+      }
     }
     if (overlay) overlay.classList.add('show');
     document.body.style.overflow = 'hidden';
@@ -1350,6 +1354,7 @@
       const menuToggle = document.getElementById('menu-toggle-btn');
       if (menuToggle && window.innerWidth <= 768) {
         menuToggle.classList.remove('is-hidden');
+        menuToggle.style.removeProperty('display');
       }
     }
     if (overlay) overlay.classList.remove('show');
@@ -1498,7 +1503,10 @@
       if (window.innerWidth <= 768) {
         const menuToggleBtn = document.getElementById('menu-toggle-btn');
         if (menuToggleBtn && sidebar) {
-          menuToggleBtn.classList.toggle('is-hidden', sidebar.classList.contains('open'));
+          const isOpen = sidebar.classList.contains('open');
+          menuToggleBtn.classList.toggle('is-hidden', isOpen);
+          if (isOpen) menuToggleBtn.style.setProperty('display', 'none', 'important');
+          else menuToggleBtn.style.removeProperty('display');
         }
       }
     });
