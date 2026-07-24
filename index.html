@@ -701,6 +701,87 @@
       background: #d1d5db;
     }
 
+    /* ===== CALENDAR STYLES ===== */
+    .calendar-day {
+      padding: 8px 4px;
+      text-align: center;
+      vertical-align: middle;
+      cursor: pointer;
+      min-height: 70px;
+      min-width: 40px;
+      transition: all 0.2s;
+      position: relative;
+      background: white;
+      border: 1px solid #e5e7eb;
+    }
+    .calendar-day:hover {
+      background: #f1f5f9;
+      transform: scale(1.02);
+      z-index: 2;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .calendar-day .day-number {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1a1a2e;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .calendar-day.today {
+      background: #eef2ff;
+      border-color: #4f46e5;
+    }
+    .calendar-day.today .day-number {
+      color: #4f46e5;
+      font-weight: 700;
+    }
+    .calendar-day.holiday {
+      background: #fef3c7;
+      border-color: #f59e0b;
+    }
+    .calendar-day.designated {
+      background: #dbeafe;
+      border-color: #3b82f6;
+    }
+    .calendar-day.both {
+      background: #fef9c3;
+      border-color: #ca8a04;
+    }
+    .calendar-empty {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      min-height: 70px;
+    }
+    .badge-indicator {
+      font-size: 12px;
+      display: inline-block;
+      margin: 0 1px;
+    }
+    .calendar-legend {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #374151;
+    }
+    #calendar-grid table {
+      min-width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+    #calendar-grid table th {
+      background: #f1f5f9;
+      color: #1a1a2e;
+      font-weight: 600;
+      padding: 8px 4px;
+      text-align: center;
+      font-size: 13px;
+      border: 1px solid #e5e7eb;
+    }
+    #calendar-grid table td {
+      border: 1px solid #e5e7eb;
+    }
+
     /* ===== RESPONSIVE - TABLETS ===== */
     @media (max-width: 1024px) {
       .stats {
@@ -862,6 +943,23 @@
       }
       #menu-toggle {
         display: none !important;
+      }
+      .calendar-day {
+        min-height: 50px;
+        padding: 4px 2px;
+      }
+      .calendar-day .day-number {
+        font-size: 12px;
+      }
+      .badge-indicator {
+        font-size: 10px;
+      }
+      .calendar-legend {
+        font-size: 11px;
+      }
+      #calendar-grid table th {
+        font-size: 11px;
+        padding: 4px 2px;
       }
     }
 
@@ -1045,6 +1143,7 @@
         <button data-page="classes">Classes</button>
         <button data-page="teachers" data-admin-only>Teachers</button>
         <button data-page="reports">Reports</button>
+        <button data-page="calendar" data-admin-only>📅 Calendar</button>
         <button data-page="admin-tools" data-admin-only>Admin Tools</button>
       </nav>
       <div class="sidebar-bottom">
@@ -1201,6 +1300,34 @@
           <h2>Detailed Attendance Records</h2>
         </div>
         <div id="report-table"></div>
+      </div>
+    </section>
+  </template>
+
+  <!-- ===== CALENDAR TEMPLATE ===== -->
+  <template id="calendar-template">
+    <section class="panel">
+      <div class="panel-heading">
+        <h2>📅 Calendar View</h2>
+        <div class="toolbar" style="margin:0;">
+          <button id="calendar-prev" class="secondary">◀ Prev</button>
+          <span id="calendar-month-year" style="font-weight:600; font-size:16px; padding:0 15px;"></span>
+          <button id="calendar-next" class="secondary">Next ▶</button>
+          <button id="calendar-today" class="primary" style="margin-left:10px;">Today</button>
+        </div>
+      </div>
+      <div style="margin-bottom:15px;">
+        <span class="calendar-legend"><span style="background:#fef3c7; border:1px solid #f59e0b; display:inline-block; width:20px; height:20px; border-radius:4px;"></span> Holiday</span>
+        <span class="calendar-legend" style="margin-left:15px;"><span style="background:#dbeafe; border:1px solid #3b82f6; display:inline-block; width:20px; height:20px; border-radius:4px;"></span> Designated Day</span>
+        <span class="calendar-legend" style="margin-left:15px;"><span style="background:#fef9c3; border:1px solid #ca8a04; display:inline-block; width:20px; height:20px; border-radius:4px;"></span> Both</span>
+      </div>
+      <div class="table-wrap" id="calendar-grid">
+        <!-- Calendar will be rendered here -->
+      </div>
+      <div id="calendar-details" style="margin-top:15px; padding:15px; background:#f8fafc; border-radius:8px; display:none;">
+        <h4 id="calendar-detail-date" style="margin:0 0 10px 0; color:#1a1a2e;"></h4>
+        <div id="calendar-detail-content"></div>
+        <button id="calendar-detail-close" class="secondary" style="margin-top:10px;">Close</button>
       </div>
     </section>
   </template>
