@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="styles.css">
   <style>
-    /* ===== RESET & BASE ===== */
     * {
       box-sizing: border-box;
       margin: 0;
@@ -20,7 +19,7 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
     }
 
-    /* ===== LOADING SCREEN ===== */
+    /* Loading Screen */
     #loading-screen {
       position: fixed;
       top: 0;
@@ -59,7 +58,7 @@
       font-size: 14px;
     }
 
-    /* ===== LOGIN SCREEN ===== */
+    /* Login Screen */
     .auth-shell {
       background: #ffffff !important;
       display: flex;
@@ -187,7 +186,7 @@
       margin: 0 auto 12px auto;
     }
 
-    /* ===== APP LAYOUT ===== */
+    /* App Layout */
     #app {
       display: flex;
       min-height: 100vh;
@@ -196,7 +195,7 @@
       overflow-x: hidden;
     }
 
-    /* ===== SIDEBAR ===== */
+    /* Sidebar */
     .sidebar {
       background: #1a1a2e;
       color: white;
@@ -295,7 +294,7 @@
       opacity: 0.7;
     }
 
-    /* ===== MAIN CONTENT ===== */
+    /* Main Content */
     .main {
       flex: 1;
       min-width: 0;
@@ -323,7 +322,7 @@
       margin: 0;
     }
 
-    /* ===== SIDEBAR OVERLAY (Mobile) ===== */
+    /* Sidebar Overlay (Mobile) */
     .sidebar-overlay {
       display: none;
       position: fixed;
@@ -341,7 +340,7 @@
       opacity: 1;
     }
 
-    /* ===== MOBILE MENU BUTTON ===== */
+    /* Mobile Menu Button */
     .menu-toggle-btn {
       display: none;
       position: fixed;
@@ -373,7 +372,7 @@
       display: none !important;
     }
 
-    /* ===== SIDEBAR CLOSE BUTTON ===== */
+    /* Sidebar Close Button */
     .sidebar-close-btn {
       display: none;
       position: absolute;
@@ -395,7 +394,7 @@
       opacity: 0.7;
     }
 
-    /* ===== STATS ===== */
+    /* Stats */
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -421,7 +420,7 @@
       margin-top: 4px;
     }
 
-    /* ===== PANELS ===== */
+    /* Panels */
     .panel {
       background: white;
       border-radius: 12px;
@@ -443,7 +442,7 @@
       margin: 0;
     }
 
-    /* ===== FORMS ===== */
+    /* Forms */
     .form-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -473,7 +472,7 @@
       box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
     }
 
-    /* ===== TOOLBAR ===== */
+    /* Toolbar */
     .toolbar {
       display: flex;
       flex-wrap: wrap;
@@ -514,8 +513,15 @@
     .toolbar .danger:hover {
       background: #dc2626;
     }
+    .toolbar .success {
+      background: #22c55e;
+      color: white;
+    }
+    .toolbar .success:hover {
+      background: #16a34a;
+    }
 
-    /* ===== TABLES ===== */
+    /* Tables */
     .table-wrap {
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
@@ -570,7 +576,7 @@
       background: rgba(239, 68, 68, 0.1);
     }
 
-    /* ===== STATUS BADGES ===== */
+    /* Status Badges */
     .status {
       display: inline-block;
       padding: 2px 10px;
@@ -591,7 +597,7 @@
       color: #92400e;
     }
 
-    /* ===== EMPTY STATE ===== */
+    /* Empty State */
     .empty {
       text-align: center;
       color: #6b7280;
@@ -599,7 +605,7 @@
       font-size: 14px;
     }
 
-    /* ===== FLASH MESSAGES ===== */
+    /* Flash Messages */
     .flash {
       display: none;
       padding: 12px 16px;
@@ -619,7 +625,7 @@
       border: 1px solid #bbf7d0;
     }
 
-    /* ===== ADMIN PANELS ===== */
+    /* Admin Panels */
     .admin-panel {
       background: rgba(79, 70, 229, 0.05);
       border: 1px solid rgba(79, 70, 229, 0.2);
@@ -633,7 +639,7 @@
       font-size: 16px;
     }
 
-    /* ===== RESET MODAL ===== */
+    /* Reset Modal */
     .reset-modal {
       display: none;
       position: fixed;
@@ -701,7 +707,7 @@
       background: #d1d5db;
     }
 
-    /* ===== CALENDAR STYLES ===== */
+    /* Calendar Styles */
     .calendar-day {
       padding: 8px 4px;
       text-align: center;
@@ -713,6 +719,7 @@
       position: relative;
       background: white;
       border: 1px solid #e5e7eb;
+      user-select: none;
     }
     .calendar-day:hover {
       background: #f1f5f9;
@@ -746,6 +753,10 @@
     .calendar-day.both {
       background: #fef9c3;
       border-color: #ca8a04;
+    }
+    .calendar-day.selected {
+      outline: 3px solid #4f46e5;
+      outline-offset: -2px;
     }
     .calendar-empty {
       background: #f9fafb;
@@ -781,19 +792,66 @@
     #calendar-grid table td {
       border: 1px solid #e5e7eb;
     }
-
-    /* ===== RESPONSIVE - TABLETS ===== */
-    @media (max-width: 1024px) {
-      .stats {
-        grid-template-columns: repeat(2, 1fr);
-      }
+    .calendar-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #f8fafc;
+      border-radius: 8px;
+    }
+    .calendar-toolbar label {
+      font-weight: 500;
+      font-size: 13px;
+      color: #374151;
+    }
+    .calendar-toolbar select {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      background: white;
+    }
+    .calendar-toolbar .action-buttons {
+      display: flex;
+      gap: 8px;
+      margin-left: auto;
+    }
+    .calendar-toolbar .action-buttons button {
+      padding: 6px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .calendar-toolbar .action-buttons .btn-holiday {
+      background: #f59e0b;
+      color: white;
+    }
+    .calendar-toolbar .action-buttons .btn-holiday:hover {
+      background: #d97706;
+    }
+    .calendar-toolbar .action-buttons .btn-designated {
+      background: #3b82f6;
+      color: white;
+    }
+    .calendar-toolbar .action-buttons .btn-designated:hover {
+      background: #2563eb;
+    }
+    .calendar-toolbar .action-buttons .btn-clear {
+      background: #ef4444;
+      color: white;
+    }
+    .calendar-toolbar .action-buttons .btn-clear:hover {
+      background: #dc2626;
     }
 
-    /* ===== RESPONSIVE - MOBILE ===== */
+    /* Responsive */
     @media (max-width: 768px) {
-      .menu-toggle-btn {
-        display: flex !important;
-      }
+      .menu-toggle-btn { display: flex !important; }
       .sidebar {
         position: fixed;
         top: 0;
@@ -807,217 +865,76 @@
         padding-top: 10px;
         border-radius: 0;
       }
-      .sidebar.open {
-        transform: translateX(0);
-      }
-      .sidebar-close-btn {
-        display: block !important;
-      }
-      .sidebar-overlay.show {
-        display: block;
-      }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-close-btn { display: block !important; }
+      .sidebar-overlay.show { display: block; }
       .main {
         padding: 60px 12px 12px 12px !important;
         width: 100%;
         max-width: 100%;
         overflow-x: hidden;
       }
-      .auth-card {
-        padding: 25px 18px;
-        margin: 10px;
-        border-radius: 12px;
-      }
-      .auth-card .brand-title .company-name {
-        font-size: 24px;
-      }
-      .auth-card .brand-title .portal-subtitle {
-        font-size: 16px;
-      }
-      .auth-card input {
-        padding: 12px 14px;
-        font-size: 16px;
-      }
-      .auth-card .primary {
-        padding: 14px 20px;
-        font-size: 16px;
-      }
-      .auth-links {
-        flex-direction: row;
-        justify-content: space-between;
-        gap: 5px;
-      }
-      .auth-links .text-button {
-        font-size: 12px;
-        padding: 6px 0;
-      }
-      .auth-logo {
-        max-width: 80px;
-      }
-      .stats {
-        grid-template-columns: 1fr 1fr !important;
-        gap: 8px !important;
-      }
-      .stats article {
-        padding: 12px 8px !important;
-      }
-      .stats article strong {
-        font-size: 20px;
-      }
-      .stats article span {
-        font-size: 11px;
-      }
-      .panel {
-        padding: 15px;
-        border-radius: 8px;
-      }
-      .panel-heading {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-      }
-      .panel-heading h2 {
-        font-size: 16px;
-      }
-      .form-grid {
-        grid-template-columns: 1fr !important;
-        gap: 10px;
-      }
-      .form-grid label {
-        font-size: 13px;
-      }
-      .form-grid input,
-      .form-grid select {
-        padding: 10px 12px;
-        font-size: 16px;
-      }
-      .toolbar {
-        flex-direction: column;
-        width: 100%;
-      }
-      .toolbar button {
-        width: 100%;
-        justify-content: center;
-        padding: 12px;
-        font-size: 14px;
-      }
-      .table-wrap table {
-        font-size: 13px;
-        min-width: 500px;
-      }
-      .table-wrap table th,
-      .table-wrap table td {
-        padding: 8px 10px;
-      }
-      .table-wrap .row-actions {
-        flex-direction: column;
-        gap: 4px;
-      }
-      .table-wrap .row-actions button {
-        font-size: 12px;
-        padding: 4px 6px;
-      }
-      .main header h1 {
-        font-size: 18px;
-      }
-      .main header p {
-        font-size: 12px;
-      }
-      .reset-modal .modal-content {
-        padding: 20px;
-        margin: 10px;
-      }
-      .reset-modal .modal-content h2 {
-        font-size: 19px;
-      }
-      .reset-modal .modal-content .toolbar {
-        flex-direction: column;
-      }
-      .reset-modal .modal-content .toolbar button {
-        width: 100%;
-      }
-      .admin-panel {
-        padding: 12px;
-      }
-      .admin-panel .form-grid {
-        grid-template-columns: 1fr !important;
-      }
-      #menu-toggle {
-        display: none !important;
-      }
-      .calendar-day {
-        min-height: 50px;
-        padding: 4px 2px;
-      }
-      .calendar-day .day-number {
-        font-size: 12px;
-      }
-      .badge-indicator {
-        font-size: 10px;
-      }
-      .calendar-legend {
-        font-size: 11px;
-      }
-      #calendar-grid table th {
-        font-size: 11px;
-        padding: 4px 2px;
-      }
+      .auth-card { padding: 25px 18px; margin: 10px; border-radius: 12px; }
+      .auth-card .brand-title .company-name { font-size: 24px; }
+      .auth-card .brand-title .portal-subtitle { font-size: 16px; }
+      .auth-card input { padding: 12px 14px; font-size: 16px; }
+      .auth-card .primary { padding: 14px 20px; font-size: 16px; }
+      .auth-links { flex-direction: row; justify-content: space-between; gap: 5px; }
+      .auth-links .text-button { font-size: 12px; padding: 6px 0; }
+      .auth-logo { max-width: 80px; }
+      .stats { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+      .stats article { padding: 12px 8px !important; }
+      .stats article strong { font-size: 20px; }
+      .stats article span { font-size: 11px; }
+      .panel { padding: 15px; border-radius: 8px; }
+      .panel-heading { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .panel-heading h2 { font-size: 16px; }
+      .form-grid { grid-template-columns: 1fr !important; gap: 10px; }
+      .form-grid label { font-size: 13px; }
+      .form-grid input, .form-grid select { padding: 10px 12px; font-size: 16px; }
+      .toolbar { flex-direction: column; width: 100%; }
+      .toolbar button { width: 100%; justify-content: center; padding: 12px; font-size: 14px; }
+      .table-wrap table { font-size: 13px; min-width: 500px; }
+      .table-wrap table th, .table-wrap table td { padding: 8px 10px; }
+      .table-wrap .row-actions { flex-direction: column; gap: 4px; }
+      .table-wrap .row-actions button { font-size: 12px; padding: 4px 6px; }
+      .main header h1 { font-size: 18px; }
+      .main header p { font-size: 12px; }
+      .reset-modal .modal-content { padding: 20px; margin: 10px; }
+      .reset-modal .modal-content h2 { font-size: 19px; }
+      .reset-modal .modal-content .toolbar { flex-direction: column; }
+      .reset-modal .modal-content .toolbar button { width: 100%; }
+      .admin-panel { padding: 12px; }
+      .admin-panel .form-grid { grid-template-columns: 1fr !important; }
+      #menu-toggle { display: none !important; }
+      .calendar-day { min-height: 50px; padding: 4px 2px; }
+      .calendar-day .day-number { font-size: 12px; }
+      .badge-indicator { font-size: 10px; }
+      .calendar-legend { font-size: 11px; }
+      #calendar-grid table th { font-size: 11px; padding: 4px 2px; }
+      .calendar-toolbar { flex-direction: column; align-items: stretch; }
+      .calendar-toolbar .action-buttons { margin-left: 0; justify-content: stretch; }
+      .calendar-toolbar .action-buttons button { flex: 1; }
     }
 
-    /* ===== RESPONSIVE - SMALL PHONES ===== */
     @media (max-width: 400px) {
-      .auth-card {
-        padding: 20px 14px;
-      }
-      .auth-card .brand-title .company-name {
-        font-size: 20px;
-      }
-      .auth-card .brand-title .portal-subtitle {
-        font-size: 14px;
-      }
-      .main {
-        padding: 55px 8px 8px 8px !important;
-      }
-      .sidebar {
-        width: 260px;
-      }
-      .stats {
-        grid-template-columns: 1fr 1fr !important;
-        gap: 6px !important;
-      }
-      .stats article {
-        padding: 10px 6px !important;
-      }
-      .stats article strong {
-        font-size: 18px;
-      }
-      .stats article span {
-        font-size: 10px;
-      }
-      .panel {
-        padding: 12px;
-      }
-      .table-wrap table {
-        font-size: 12px;
-        min-width: 400px;
-      }
-      .table-wrap table th,
-      .table-wrap table td {
-        padding: 6px 8px;
-      }
-      .menu-toggle-btn {
-        width: 38px;
-        height: 38px;
-        font-size: 18px;
-        top: 8px;
-        left: 8px;
-      }
+      .auth-card { padding: 20px 14px; }
+      .auth-card .brand-title .company-name { font-size: 20px; }
+      .auth-card .brand-title .portal-subtitle { font-size: 14px; }
+      .main { padding: 55px 8px 8px 8px !important; }
+      .sidebar { width: 260px; }
+      .stats { grid-template-columns: 1fr 1fr !important; gap: 6px !important; }
+      .stats article { padding: 10px 6px !important; }
+      .stats article strong { font-size: 18px; }
+      .stats article span { font-size: 10px; }
+      .panel { padding: 12px; }
+      .table-wrap table { font-size: 12px; min-width: 400px; }
+      .table-wrap table th, .table-wrap table td { padding: 6px 8px; }
+      .menu-toggle-btn { width: 38px; height: 38px; font-size: 18px; top: 8px; left: 8px; }
     }
 
-    /* ===== RESPONSIVE - DESKTOP ===== */
     @media (min-width: 769px) {
-      .menu-toggle-btn {
-        display: none !important;
-      }
+      .menu-toggle-btn { display: none !important; }
       .sidebar {
         transform: translateX(0) !important;
         position: relative;
@@ -1025,37 +942,17 @@
         overflow-y: auto;
         border-radius: 0;
       }
-      .sidebar-close-btn {
-        display: none !important;
-      }
-      .sidebar-overlay {
-        display: none !important;
-      }
-      .main {
-        padding: 25px 30px;
-      }
-      #menu-toggle {
-        display: none !important;
-      }
+      .sidebar-close-btn { display: none !important; }
+      .sidebar-overlay { display: none !important; }
+      .main { padding: 25px 30px; }
+      #menu-toggle { display: none !important; }
     }
 
-    /* ===== MISC UTILITIES ===== */
-    .hidden {
-      display: none !important;
-    }
-    .muted {
-      color: #6b7280;
-      font-size: 13px;
-    }
-    .text-center {
-      text-align: center;
-    }
-    .mt-10 {
-      margin-top: 10px;
-    }
-    .mb-10 {
-      margin-bottom: 10px;
-    }
+    .hidden { display: none !important; }
+    .muted { color: #6b7280; font-size: 13px; }
+    .text-center { text-align: center; }
+    .mt-10 { margin-top: 10px; }
+    .mb-10 { margin-bottom: 10px; }
     .inline-form {
       margin: 10px 0;
       padding: 15px;
@@ -1063,15 +960,9 @@
       border-radius: 8px;
       border: 1px solid #e5e7eb;
     }
-    .compact {
-      gap: 10px !important;
-    }
-    .compact article {
-      padding: 10px 12px !important;
-    }
-    .compact article strong {
-      font-size: 18px !important;
-    }
+    .compact { gap: 10px !important; }
+    .compact article { padding: 10px 12px !important; }
+    .compact article strong { font-size: 18px !important; }
   </style>
 </head>
 <body>
@@ -1143,7 +1034,7 @@
         <button data-page="classes">Classes</button>
         <button data-page="teachers" data-admin-only>Teachers</button>
         <button data-page="reports">Reports</button>
-        <button data-page="calendar" data-admin-only>📅 Calendar</button>
+        <button data-page="calendar" data-admin-only>Calendar</button>
         <button data-page="admin-tools" data-admin-only>Admin Tools</button>
       </nav>
       <div class="sidebar-bottom">
@@ -1165,24 +1056,13 @@
     </section>
   </div>
 
+  <!-- Templates -->
   <template id="dashboard-template">
     <div class="stats">
-      <article>
-        <span>Students</span>
-        <strong data-stat="students">0</strong>
-      </article>
-      <article>
-        <span>Classes</span>
-        <strong data-stat="classes">0</strong>
-      </article>
-      <article>
-        <span>Present Today</span>
-        <strong data-stat="present">0</strong>
-      </article>
-      <article>
-        <span>Attendance Today</span>
-        <strong data-stat="rate">0%</strong>
-      </article>
+      <article><span>Students</span><strong data-stat="students">0</strong></article>
+      <article><span>Classes</span><strong data-stat="classes">0</strong></article>
+      <article><span>Present Today</span><strong data-stat="present">0</strong></article>
+      <article><span>Attendance Today</span><strong data-stat="rate">0%</strong></article>
     </div>
     <section class="panel">
       <div class="panel-heading">
@@ -1196,14 +1076,8 @@
   <template id="attendance-template">
     <section class="panel">
       <div class="form-grid">
-        <label>Date
-          <input id="attendance-date" type="date">
-        </label>
-        <label>Class
-          <select id="attendance-class">
-            <option value="">Select A Class</option>
-          </select>
-        </label>
+        <label>Date <input id="attendance-date" type="date"></label>
+        <label>Class <select id="attendance-class"><option value="">Select A Class</option></select></label>
       </div>
       <div class="toolbar">
         <button id="load-roster" class="secondary">Load Students</button>
@@ -1220,9 +1094,7 @@
         <button class="primary" id="new-student" data-admin-only>Add Student</button>
       </div>
       <div class="form-grid" style="grid-template-columns:1fr">
-        <label>Filter By Class
-          <select id="students-class-filter"></select>
-        </label>
+        <label>Filter By Class <select id="students-class-filter"></select></label>
       </div>
       <div id="student-form" class="inline-form hidden"></div>
       <div id="students-table"></div>
@@ -1242,9 +1114,7 @@
 
   <template id="teachers-template">
     <section class="panel">
-      <div class="panel-heading">
-        <h2>Teacher Registration</h2>
-      </div>
+      <div class="panel-heading"><h2>Teacher Registration</h2></div>
       <p class="muted">A Teacher Creates An Account First. Select Account Below To Activate Their Staff Profile.</p>
       <div id="teacher-form" class="inline-form"></div>
       <div id="teachers-table"></div>
@@ -1254,76 +1124,80 @@
   <template id="reports-template">
     <section class="panel">
       <div class="form-grid report-filters">
-        <label>From
-          <input id="report-from" type="date">
-        </label>
-        <label>To
-          <input id="report-to" type="date">
-        </label>
-        <label>Class
-          <select id="report-class">
-            <option value="">All Available Classes</option>
-          </select>
-        </label>
-        <label>Student
-          <select id="report-student">
-            <option value="">All Students</option>
-          </select>
-        </label>
+        <label>From <input id="report-from" type="date"></label>
+        <label>To <input id="report-to" type="date"></label>
+        <label>Class <select id="report-class"><option value="">All Available Classes</option></select></label>
+        <label>Student <select id="report-student"><option value="">All Students</option></select></label>
       </div>
       <div class="form-grid" style="grid-template-columns:1fr">
-        <label>Show
-          <select id="report-view">
-            <option value="summary">Summary By Student Only</option>
-            <option value="detail">Detailed Records Only</option>
-            <option value="both">Summary + Detailed Records</option>
-          </select>
-        </label>
+        <label>Show <select id="report-view">
+          <option value="summary">Summary By Student Only</option>
+          <option value="detail">Detailed Records Only</option>
+          <option value="both">Summary + Detailed Records</option>
+        </select></label>
       </div>
       <div class="toolbar">
         <button id="run-report" class="secondary">Run Report</button>
         <button id="excel-export-both" class="primary export-only">Download Excel (Both)</button>
         <button id="excel-export-summary" class="secondary export-only">Download Excel (Summary)</button>
         <button id="excel-export-detail" class="secondary export-only">Download Excel (Detailed)</button>
-        <button id="pdf-export" class="secondary export-only">📄 Save PDF</button>
+        <button id="pdf-export" class="secondary export-only">Save PDF</button>
       </div>
       <p id="export-restricted-note" class="muted hidden">Report Downloads Have Been Disabled For Your Account By The Administrator.</p>
       <div id="report-summary" class="stats compact"></div>
       <div id="summary-section">
-        <div class="panel-heading" style="margin-top:24px">
-          <h2>Summary By Student</h2>
-        </div>
+        <div class="panel-heading" style="margin-top:24px"><h2>Summary By Student</h2></div>
         <div id="student-summary-table"></div>
       </div>
       <div id="detail-section">
-        <div class="panel-heading" style="margin-top:24px">
-          <h2>Detailed Attendance Records</h2>
-        </div>
+        <div class="panel-heading" style="margin-top:24px"><h2>Detailed Attendance Records</h2></div>
         <div id="report-table"></div>
       </div>
     </section>
   </template>
 
-  <!-- ===== CALENDAR TEMPLATE ===== -->
+  <!-- Calendar Template -->
   <template id="calendar-template">
     <section class="panel">
       <div class="panel-heading">
-        <h2>📅 Calendar View</h2>
-        <div class="toolbar" style="margin:0;">
-          <button id="calendar-prev" class="secondary">◀ Prev</button>
-          <span id="calendar-month-year" style="font-weight:600; font-size:16px; padding:0 15px;"></span>
-          <button id="calendar-next" class="secondary">Next ▶</button>
-          <button id="calendar-today" class="primary" style="margin-left:10px;">Today</button>
+        <h2>Calendar</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="calendar-prev" class="secondary">◀</button>
+          <span id="calendar-month-year" style="font-weight:600; font-size:16px; min-width:150px; text-align:center;"></span>
+          <button id="calendar-next" class="secondary">▶</button>
+          <button id="calendar-today" class="primary" style="padding:6px 12px; font-size:13px;">Today</button>
         </div>
       </div>
-      <div style="margin-bottom:15px;">
-        <span class="calendar-legend"><span style="background:#fef3c7; border:1px solid #f59e0b; display:inline-block; width:20px; height:20px; border-radius:4px;"></span> Holiday</span>
-        <span class="calendar-legend" style="margin-left:15px;"><span style="background:#dbeafe; border:1px solid #3b82f6; display:inline-block; width:20px; height:20px; border-radius:4px;"></span> Designated Day</span>
-        <span class="calendar-legend" style="margin-left:15px;"><span style="background:#fef9c3; border:1px solid #ca8a04; display:inline-block; width:20px; height:20px; border-radius:4px;"></span> Both</span>
+
+      <!-- Calendar Toolbar -->
+      <div class="calendar-toolbar">
+        <label>Class:
+          <select id="calendar-class-filter">
+            <option value="">All Classes</option>
+          </select>
+        </label>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <span class="calendar-legend"><span style="background:#fef3c7; border:1px solid #f59e0b; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Holiday</span>
+          <span class="calendar-legend" style="margin-left:8px;"><span style="background:#dbeafe; border:1px solid #3b82f6; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Designated</span>
+          <span class="calendar-legend" style="margin-left:8px;"><span style="background:#fef9c3; border:1px solid #ca8a04; display:inline-block; width:18px; height:18px; border-radius:4px;"></span> Both</span>
+        </div>
+        <div class="action-buttons">
+          <button class="btn-holiday" id="mark-holiday">Mark Holiday</button>
+          <button class="btn-designated" id="mark-designated">Mark Designated</button>
+          <button class="btn-clear" id="clear-selected">Clear</button>
+        </div>
       </div>
-      <div class="table-wrap" id="calendar-grid">
-        <!-- Calendar will be rendered here -->
+
+      <!-- Calendar Grid -->
+      <div class="table-wrap" id="calendar-grid"></div>
+
+      <!-- Selected Date Info -->
+      <div id="selected-info" style="margin-top:10px; padding:10px; background:#f8fafc; border-radius:8px; display:none;">
+        <p style="margin:0;"><strong>Selected:</strong> <span id="selected-date-text"></span></p>
+        <p style="margin:5px 0 0 0; font-size:13px; color:#6b7280;">Click a date to select it, then use the buttons above to mark as Holiday or Designated Day.</p>
       </div>
+
+      <!-- Details Panel -->
       <div id="calendar-details" style="margin-top:15px; padding:15px; background:#f8fafc; border-radius:8px; display:none;">
         <h4 id="calendar-detail-date" style="margin:0 0 10px 0; color:#1a1a2e;"></h4>
         <div id="calendar-detail-content"></div>
@@ -1332,113 +1206,23 @@
     </section>
   </template>
 
-  <!-- ===== ADMIN TOOLS TEMPLATE ===== -->
+  <!-- Admin Tools Template -->
   <template id="admin-tools-template">
     <section class="panel">
-      <div class="panel-heading">
-        <h2>Admin Tools</h2>
-      </div>
-      
+      <div class="panel-heading"><h2>Admin Tools</h2></div>
+
       <!-- Clear Attendance Data -->
       <div class="admin-panel">
-        <h3>🗑️ Clear Attendance Data</h3>
+        <h3>Clear Attendance Data</h3>
         <p class="muted">Delete attendance records for a specific date range. This action cannot be undone.</p>
         <div class="form-grid">
-          <label>From Date
-            <input id="clear-from" type="date">
-          </label>
-          <label>To Date
-            <input id="clear-to" type="date">
-          </label>
-          <label>Class
-            <select id="clear-class">
-              <option value="">All Classes</option>
-            </select>
-          </label>
-          <label>Student
-            <select id="clear-student">
-              <option value="">All Students</option>
-            </select>
-          </label>
+          <label>From Date <input id="clear-from" type="date"></label>
+          <label>To Date <input id="clear-to" type="date"></label>
+          <label>Class <select id="clear-class"><option value="">All Classes</option></select></label>
+          <label>Student <select id="clear-student"><option value="">All Students</option></select></label>
         </div>
         <button id="clear-attendance" class="danger" style="background:#ef4444;color:white;padding:10px 20px;border:none;border-radius:6px;cursor:pointer;margin-top:10px;">Clear Attendance Records</button>
         <div id="clear-result" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Holidays Management -->
-      <div class="admin-panel">
-        <h3>📅 Manage Holidays</h3>
-        <p class="muted">Add holidays for specific classes or all classes. Students won't be marked absent on these dates.</p>
-        <div class="form-grid">
-          <label>Class
-            <select id="holiday-class">
-              <option value="">All Classes</option>
-            </select>
-          </label>
-          <label>Date
-            <input id="holiday-date" type="date">
-          </label>
-          <label>Reason
-            <input id="holiday-reason" placeholder="e.g., Eid Holiday, Winter Break">
-          </label>
-        </div>
-        <div class="toolbar">
-          <button id="add-holiday" class="primary">Add Holiday</button>
-          <button id="bulk-holiday" class="secondary">Bulk Add Holidays</button>
-        </div>
-        <div id="holiday-bulk-form" style="display:none; margin-top:10px; padding:10px; background:rgba(0,0,0,0.03); border-radius:6px;">
-          <div class="form-grid">
-            <label>From Date
-              <input id="holiday-from" type="date">
-            </label>
-            <label>To Date
-              <input id="holiday-to" type="date">
-            </label>
-            <label>Reason
-              <input id="holiday-bulk-reason" placeholder="e.g., Winter Break">
-            </label>
-          </div>
-          <button id="holiday-bulk-submit" class="primary" style="margin-top:5px;">Add Bulk Holidays</button>
-        </div>
-        <div id="holidays-list" style="margin-top:15px;"></div>
-      </div>
-
-      <!-- Designated Days Management -->
-      <div class="admin-panel">
-        <h3>⭐ Manage Designated Days</h3>
-        <p class="muted">Designate mandatory attendance days for specific classes or all classes.</p>
-        <div class="form-grid">
-          <label>Class
-            <select id="designated-class">
-              <option value="">All Classes</option>
-            </select>
-          </label>
-          <label>Date
-            <input id="designated-date" type="date">
-          </label>
-          <label>Reason
-            <input id="designated-reason" placeholder="e.g., Exam Day, Important Event">
-          </label>
-        </div>
-        <div class="toolbar">
-          <button id="add-designated" class="primary">Add Designated Day</button>
-          <button id="bulk-designated" class="secondary">Bulk Add Designated Days</button>
-        </div>
-        <div id="designated-bulk-form" style="display:none; margin-top:10px; padding:10px; background:rgba(0,0,0,0.03); border-radius:6px;">
-          <div class="form-grid">
-            <label>From Date
-              <input id="designated-from" type="date">
-            </label>
-            <label>To Date
-              <input id="designated-to" type="date">
-            </label>
-            <label>Reason
-              <input id="designated-bulk-reason" placeholder="e.g., Exam Week">
-            </label>
-          </div>
-          <button id="designated-bulk-submit" class="primary" style="margin-top:5px;">Add Bulk Designated Days</button>
-        </div>
-        <div id="designated-list" style="margin-top:15px;"></div>
       </div>
     </section>
   </template>
