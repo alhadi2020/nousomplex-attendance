@@ -850,6 +850,11 @@
       return flash("Report downloads are disabled for your account.", true);
     }
     
+    // Respect the "Show" dropdown: summary / detail / both — same modes exportExcel uses.
+    const viewMode = document.getElementById('report-view')?.value || 'summary';
+    const includeSummary = viewMode === 'summary' || viewMode === 'both';
+    const includeDetail = viewMode === 'detail' || viewMode === 'both';
+    
     const results = state.reportStudentResults;
     const { from, to } = state.reportDateRange || {};
     const classFilter = document.getElementById('report-class')?.value || '';
@@ -919,6 +924,7 @@
           <span class="meta-item"><strong>Class:</strong> ${className}</span>
           <span class="meta-item"><strong>Student:</strong> ${studentName}</span>
           <span class="meta-item"><strong>Total Students:</strong> ${results.length}</span>
+          <span class="meta-item"><strong>Report Type:</strong> ${document.getElementById('report-view')?.selectedOptions?.[0]?.textContent || 'Summary By Student Only'}</span>
         </div>
         <div class="stats-grid">
           <div class="stat-box highlight"><span class="number">${results.length}</span><span class="label">Total Students</span></div>
@@ -930,6 +936,7 @@
           <div class="stat-box yellow"><span class="number">${totalLeave}</span><span class="label">Leave</span></div>
           <div class="stat-box highlight"><span class="number">${overallAttendance}%</span><span class="label">Overall Attendance</span></div>
         </div>
+        ${includeSummary ? `
         <h3 class="section-title">Student Summary</h3>
         <table><thead><tr><th>Roll</th><th>Student</th><th>Class</th><th>Total Days</th><th>Holidays</th><th>Designated</th><th>Present</th><th>Absent</th><th>Leave</th><th>Attendance %</th></tr></thead><tbody>
           ${results.map(s => `<tr>
@@ -945,7 +952,8 @@
             <td><span class="${s.attendancePercentage >= 75 ? 'pct-high' : 'pct-low'}">${s.attendancePercentage}%</span></td>
           </tr>`).join("")}
         </tbody></table>
-        ${detailRows.length > 0 ? `
+        ` : ''}
+        ${includeDetail && detailRows.length > 0 ? `
           <h3 class="section-title">Detailed Records</h3>
           <table><thead><tr><th>Roll</th><th>Student</th><th>Date</th><th>Class</th><th>Status</th><th>Remarks</th></tr></thead><tbody>
             ${detailRows.map(r => `<tr>
@@ -958,6 +966,7 @@
             </tr>`).join("")}
           </tbody></table>
         ` : ''}
+        ${includeDetail && !includeSummary && detailRows.length === 0 ? `<p style="text-align:center;color:#9ca3af;padding:20px;">No detailed records found for the selected filters.</p>` : ''}
         <div class="footer"><p>Report generated from <strong>Nous Complex Attendance Portal</strong></p><p>© ${new Date().getFullYear()} Nous Complex • All Rights Reserved</p></div>
       </body></html>
     `;
@@ -1320,9 +1329,12 @@
     const overlay = document.getElementById('sidebar-overlay');
     if (sidebar) {
       sidebar.classList.add('open');
-      // Hide hamburger button when sidebar is open
+      // Hide hamburger button when sidebar/navbar is open.
+      // Uses the .is-hidden class (not inline styles) because the mobile
+      // media query rule `.menu-toggle-btn { display: flex !important; }`
+      // would otherwise override an inline style with higher priority.
       const menuToggle = document.getElementById('menu-toggle-btn');
-      if (menuToggle) menuToggle.style.display = 'none';
+      if (menuToggle) menuToggle.classList.add('is-hidden');
     }
     if (overlay) overlay.classList.add('show');
     document.body.style.overflow = 'hidden';
@@ -1333,10 +1345,11 @@
     const overlay = document.getElementById('sidebar-overlay');
     if (sidebar) {
       sidebar.classList.remove('open');
-      // Show hamburger button when sidebar is closed
+      // Show hamburger button again when sidebar/navbar is closed (mobile only;
+      // on desktop the button stays hidden via the >=769px media query anyway).
       const menuToggle = document.getElementById('menu-toggle-btn');
       if (menuToggle && window.innerWidth <= 768) {
-        menuToggle.style.display = 'flex';
+        menuToggle.classList.remove('is-hidden');
       }
     }
     if (overlay) overlay.classList.remove('show');
@@ -1344,30 +1357,68 @@
   }
 
   // --- Reset Password Handler for Email Link ---
+  function openResetModal() {
+    hideLoadingScreen();
+    setTimeout(() => {
+      $("#reset-password").value = "";
+      $("#reset-password-confirm").value = "";
+      $("#reset-message").textContent = "";
+      $("#reset-modal").classList.add("show");
+    }, 300);
+  }
+
+  function cleanResetUrl() {
+    const path = window.location.pathname.includes('/nousomplex-attendance/')
+      ? '/nousomplex-attendance/'
+      : window.location.pathname;
+    window.history.replaceState({}, '', path);
+  }
+
   function handlePasswordReset() {
-    const params = new URLSearchParams(window.location.search);
-    const type = params.get('type');
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    
+    if (!state.db) return;
+
+    // Supabase's reset-password link can hand back the recovery info in three
+    // different ways depending on project settings, so we check all of them:
+    //   1) Hash fragment (default implicit flow): #access_token=...&type=recovery
+    //   2) Query string (some configs / older links): ?access_token=...&type=recovery
+    //   3) PKCE flow: ?code=xxxxx  (needs exchangeCodeForSession)
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const queryParams = new URLSearchParams(window.location.search);
+
+    const type = hashParams.get('type') || queryParams.get('type');
+    const accessToken = hashParams.get('access_token') || queryParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token') || queryParams.get('refresh_token');
+    const code = queryParams.get('code');
+
     if (type === 'recovery' && accessToken) {
       showLoadingScreen('Verifying reset link...');
-      
       state.db.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken
-      }).then(() => {
-        hideLoadingScreen();
-        // Show reset password modal
-        setTimeout(() => {
-          $("#reset-modal").classList.add("show");
-        }, 500);
-        // Clean URL
-        window.history.replaceState({}, '', '/nousomplex-attendance/');
+      }).then(({ error }) => {
+        if (error) throw error;
+        cleanResetUrl();
+        openResetModal();
       }).catch((err) => {
         console.error('Reset link error:', err);
         hideLoadingScreen();
-        flash("Invalid or expired reset link. Please try again.", true);
+        cleanResetUrl();
+        flash("Invalid or expired reset link. Please request a new one.", true);
+      });
+      return;
+    }
+
+    if (code) {
+      showLoadingScreen('Verifying reset link...');
+      state.db.auth.exchangeCodeForSession(code).then(({ error }) => {
+        if (error) throw error;
+        cleanResetUrl();
+        openResetModal();
+      }).catch((err) => {
+        console.error('Reset link error:', err);
+        hideLoadingScreen();
+        cleanResetUrl();
+        flash("Invalid or expired reset link. Please request a new one.", true);
       });
     }
   }
@@ -1402,21 +1453,20 @@
       $("#reset-message").textContent = "";
     };
     
-    // Handle password reset from email link
-    handlePasswordReset();
-    
-    // Also listen for auth state changes for password recovery
+    // Listen for auth state changes for password recovery (covers the case
+    // where supabase-js auto-detects the recovery session from the URL itself).
+    // Registered BEFORE handlePasswordReset() runs so it's never missed.
     if (state.db) {
-      state.db.auth.onAuthStateChange((event, session) => {
+      state.db.auth.onAuthStateChange((event) => {
         if (event === "PASSWORD_RECOVERY") {
-          hideLoadingScreen();
-          setTimeout(() => {
-            $("#reset-modal").classList.add("show");
-          }, 300);
-          window.history.replaceState({}, "", window.location.pathname);
+          cleanResetUrl();
+          openResetModal();
         }
       });
     }
+
+    // Handle password reset from email link (manual parsing of hash/query/code)
+    handlePasswordReset();
     
     // Mobile Sidebar Toggle
     const menuToggle = document.getElementById('menu-toggle-btn');
@@ -1442,13 +1492,13 @@
         sidebar.classList.remove('open');
         if (overlay) overlay.classList.remove('show');
         document.body.style.overflow = '';
-        // Show hamburger button on desktop (hidden by CSS)
+        // Hamburger stays hidden on desktop via the >=769px CSS media query.
       }
-      // Ensure hamburger visibility based on sidebar state
+      // Ensure hamburger visibility matches sidebar state when resizing back to mobile
       if (window.innerWidth <= 768) {
         const menuToggleBtn = document.getElementById('menu-toggle-btn');
-        if (menuToggleBtn && sidebar && !sidebar.classList.contains('open')) {
-          menuToggleBtn.style.display = 'flex';
+        if (menuToggleBtn && sidebar) {
+          menuToggleBtn.classList.toggle('is-hidden', sidebar.classList.contains('open'));
         }
       }
     });
