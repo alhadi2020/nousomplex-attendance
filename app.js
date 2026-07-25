@@ -20,7 +20,8 @@
     reportTotalDesignatedDays: 0, 
     recoveryMode: false,
     currentAttendanceDate: null,
-    currentAttendanceClass: null
+    currentAttendanceClass: null,
+    allowPastAttendance: true // Default setting
   };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
@@ -36,7 +37,7 @@
   const empty = text => `<div class="empty">${esc(text)}</div>`;
   const isAdmin = () => state.profile?.role === "admin";
   const ensureConfigured = () => { if (!configured) { $("#auth-message").textContent = "Add your Supabase Project URL and anon key to config.js before signing in."; return false; } return true; };
- 
+  
   // --- Loading Screen Controls ---
   let loadingHidden = false;
   
@@ -127,6 +128,9 @@
       state.profile = profile;
       state.teacher = teacher;
       
+      // Load admin settings
+      await loadAdminSettings();
+      
       const displayName = state.profile.full_name || state.profile.email;
       $("#user-name").textContent = displayName;
       $("#user-role").textContent = state.profile.role;
@@ -154,6 +158,35 @@
       hideLoadingScreen();
       sessionLoading = false;
       showAuth();
+    }
+  }
+
+  // --- Load Admin Settings ---
+  async function loadAdminSettings() {
+    try {
+      const settings = await api(state.db.from("admin_settings").select("*").maybeSingle());
+      if (settings) {
+        state.allowPastAttendance = settings.allow_past_attendance !== false;
+      }
+    } catch (e) {
+      // Silently fail - use defaults
+      console.warn('Could not load admin settings:', e);
+    }
+  }
+
+  // --- Save Admin Settings ---
+  async function saveAdminSettings(settings) {
+    try {
+      const existing = await api(state.db.from("admin_settings").select("id").maybeSingle());
+      if (existing) {
+        await api(state.db.from("admin_settings").update(settings).eq("id", existing.id));
+      } else {
+        await api(state.db.from("admin_settings").insert(settings));
+      }
+      state.allowPastAttendance = settings.allow_past_attendance !== false;
+      flash("Admin settings saved successfully.");
+    } catch (e) {
+      flash(e.message, true);
     }
   }
 
@@ -363,32 +396,55 @@
     
     if (!classId || !date) return flash("Choose a class and date.", true);
     
+    // Check if attendance already exists for this date/class
+    const existingSession = await api(state.db.from("attendance_sessions").select("id,created_at").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
+    const isExisting = !!existingSession;
+    
     const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
-    const session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
+    const session = existingSession || await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
     const map = Object.fromEntries(existing.map(r => [r.student_id, r]));
     
     // Check if admin for edit controls
     const admin = isAdmin();
     
+    // For teachers: check if attendance already exists and they're not admin
+    // Also check if they're allowed to mark past attendance
+    const isTeacher = !admin && state.teacher;
+    const isPastDate = date < isoToday();
+    const canMarkPast = isAdmin() || state.allowPastAttendance;
+    const canEdit = admin || (!isExisting && (!isPastDate || canMarkPast));
+    
+    // Show warning for existing attendance
+    if (isExisting && isTeacher) {
+      flash("⚠️ Attendance has already been marked for this class on this date. Changes are not allowed.", true);
+    } else if (isPastDate && isTeacher && !canMarkPast) {
+      flash("⚠️ Marking attendance for past dates is restricted by admin.", true);
+    }
+    
     $("#roster").innerHTML = students.length ? 
       `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th>${admin ? '<th>Actions</th>' : ''}</tr></thead><tbody>${students.map(s => { 
         const r = map[s.id] || { status:"present", remarks:"" }; 
         const statuses = ['present', 'absent', 'leave'];
         const statusLabels = { present: 'Present', absent: 'Absent', leave: 'Leave' };
+        const disabled = isExisting && !admin;
         return `<tr data-student="${s.id}" data-status="${r.status}">
           <td>${esc(s.roll_number)}</td>
           <td>${esc(s.name)}</td>
           <td>
-            <select class="status-select" ${admin ? '' : 'disabled'}>
+            <select class="status-select" ${disabled ? 'disabled' : ''}>
               ${statuses.map(st => `<option value="${st}" ${r.status === st ? "selected" : ""}>${statusLabels[st]}</option>`).join("")}
             </select>
           </td>
-          <td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250" ${admin ? '' : 'disabled'}></td>
+          <td><input class="remarks" value="${esc(r.remarks || "")}" maxlength="250" ${disabled ? 'disabled' : ''}></td>
           ${admin ? `<td><button class="text-button edit-record" type="button" style="color:#4f46e5;">Edit</button></td>` : ''}
         </tr>`; 
       }).join("")}</tbody></table></div>` : 
       empty("No active students exist in this class.");
+    
+    // Disable save button if teacher can't edit
+    const canSave = admin || (!isExisting && (!isPastDate || canMarkPast));
+    $("#save-attendance").disabled = !students.length || !canSave;
     
     // Add edit functionality for admin
     if (admin) {
@@ -415,7 +471,6 @@
       });
     }
     
-    $("#save-attendance").disabled = !students.length;
     applyRoleVisibility();
   }
 
@@ -489,19 +544,38 @@
     const classId = $("#attendance-class").value;
     const date = $("#attendance-date").value;
     if (!classId || !date) return;
+    
+    // Check if attendance already exists
+    const existingSession = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
+    const isTeacher = !isAdmin() && state.teacher;
+    const isPastDate = date < isoToday();
+    const canMarkPast = isAdmin() || state.allowPastAttendance;
+    
+    if (isTeacher && existingSession) {
+      flash("⚠️ Attendance already marked for this class on this date. Changes are not allowed.", true);
+      return;
+    }
+    if (isTeacher && isPastDate && !canMarkPast) {
+      flash("⚠️ Marking attendance for past dates is restricted by admin.", true);
+      return;
+    }
+    
     try {
-      let session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
-      if (!session) session = await api(state.db.from("attendance_sessions").insert({ class_id:classId, attendance_date:date }).select("id").single());
+      let session = existingSession;
+      if (!session) {
+        session = await api(state.db.from("attendance_sessions").insert({ class_id: classId, attendance_date: date }).select("id").single());
+      }
       
       const records = [...document.querySelectorAll("#roster tbody tr")].map(row => ({ 
-        session_id:session.id, 
-        student_id:row.dataset.student, 
-        status:$(".status-select", row).value, 
-        remarks:$(".remarks", row).value.trim() || null 
+        session_id: session.id, 
+        student_id: row.dataset.student, 
+        status: $(".status-select", row).value, 
+        remarks: $(".remarks", row).value.trim() || null 
       }));
       
       await api(state.db.from("attendance_records").upsert(records, { onConflict:"session_id,student_id" })); 
       flash("Attendance saved successfully.");
+      await loadRoster(); // Reload to reflect changes
     } catch (e) { flash(e.message, true); }
   }
 
@@ -1037,9 +1111,8 @@
       <style>
         * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; padding: 30px; color: #1a1a2e; max-width: 1100px; margin: 0 auto; background: #ffffff; }
-        .header { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 15px; margin-bottom: 20px; }
-        .header h1 { font-size: 28px; color: #1a1a2e; margin: 0; }
-        .header h1 span { color: #4f46e5; }
+        .header { text-align: center; border-bottom: 3px solid #1a1a2e; padding-bottom: 15px; margin-bottom: 20px; }
+        .header h1 { font-size: 32px; color: #1a1a2e; margin: 0; font-weight: 800; letter-spacing: 1px; }
         .header h2 { font-weight: 400; color: #6b7280; margin: 5px 0 0 0; font-size: 18px; }
         .header p { color: #9ca3af; font-size: 13px; margin: 5px 0 0 0; }
         .report-meta { display: flex; justify-content: space-between; flex-wrap: wrap; background: #f8fafc; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; border: 1px solid #e5e7eb; }
@@ -1049,8 +1122,8 @@
         .stats-grid .stat-box { background: #f8fafc; padding: 12px 15px; border-radius: 8px; text-align: center; border: 1px solid #e5e7eb; }
         .stats-grid .stat-box .number { font-size: 22px; font-weight: bold; color: #1a1a2e; display: block; }
         .stats-grid .stat-box .label { font-size: 12px; color: #6b7280; display: block; margin-top: 2px; }
-        .stats-grid .stat-box.highlight { background: #eef2ff; border-color: #4f46e5; }
-        .stats-grid .stat-box.highlight .number { color: #4f46e5; }
+        .stats-grid .stat-box.highlight { background: #eef2ff; border-color: #1a1a2e; }
+        .stats-grid .stat-box.highlight .number { color: #1a1a2e; }
         .stats-grid .stat-box.green { background: #f0fdf4; border-color: #86efac; }
         .stats-grid .stat-box.green .number { color: #166534; }
         .stats-grid .stat-box.red { background: #fef2f2; border-color: #fca5a5; }
@@ -1074,7 +1147,7 @@
         @media (max-width: 600px) { body { padding: 10px; } .stats-grid { grid-template-columns: 1fr 1fr; } .report-meta { flex-direction: column; gap: 5px; } }
       </style>
       </head><body>
-        <div class="header"><h1>Nous <span>Complex</span></h1><h2>Attendance Report</h2><p>Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
+        <div class="header"><h1>Nous Complex</h1><h2>Attendance Report</h2><p>Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</p></div>
         <div class="report-meta">
           <span class="meta-item"><strong>Date Range:</strong> ${from || 'N/A'} to ${to || 'N/A'}</span>
           <span class="meta-item"><strong>Class:</strong> ${esc(className)}</span>
@@ -1435,6 +1508,39 @@
           students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("");
       } else {
         document.getElementById('clear-student').innerHTML = `<option value="">All Students</option>`;
+      }
+    };
+    
+    // Admin Settings - Past Attendance Control
+    const settingsSection = document.createElement('div');
+    settingsSection.className = 'admin-panel';
+    settingsSection.innerHTML = `
+      <h3>Attendance Settings</h3>
+      <p class="muted">Control whether teachers can mark attendance for past dates.</p>
+      <div style="display:flex; align-items:center; gap:15px; margin-top:10px; flex-wrap:wrap;">
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="allow-past-attendance" ${state.allowPastAttendance ? 'checked' : ''}>
+          <span>Allow teachers to mark attendance for past dates</span>
+        </label>
+        <button id="save-settings-btn" class="primary" style="padding:8px 20px;">Save Settings</button>
+      </div>
+      <div id="settings-result" style="margin-top:8px;"></div>
+    `;
+    
+    const panel = document.querySelector('.admin-panel');
+    if (panel) {
+      panel.parentNode.insertBefore(settingsSection, panel);
+    }
+    
+    document.getElementById('save-settings-btn').onclick = async () => {
+      const allow = document.getElementById('allow-past-attendance').checked;
+      try {
+        await saveAdminSettings({ allow_past_attendance: allow });
+        state.allowPastAttendance = allow;
+        document.getElementById('settings-result').innerHTML = `<div style="color: green; padding: 8px; background: rgba(34,197,94,0.1); border-radius: 6px;">✅ Settings saved successfully.</div>`;
+        setTimeout(() => { document.getElementById('settings-result').innerHTML = ''; }, 3000);
+      } catch (err) {
+        document.getElementById('settings-result').innerHTML = `<div style="color: #ef4444; padding: 8px; background: rgba(239,68,68,0.1); border-radius: 6px;">❌ Error: ${err.message}</div>`;
       }
     };
     
