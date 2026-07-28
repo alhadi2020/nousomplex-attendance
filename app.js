@@ -403,18 +403,45 @@
     return d.getDay() === 0 || d.getDay() === 6;
   }
 
-  // --- Helper: Check if date is holiday ---
-  async function checkIfHolidayOrWeekend(date, classId) {
-    if (isWeekend(date)) return true;
+  // --- Helper: Check if date is holiday or designated day ---
+  async function getDayType(date, classId) {
+    const isWeekendDay = isWeekend(date);
     
-    let query = state.db.from("holidays").select("id").eq("date", date);
+    // Check if date is a designated day (this overrides holiday/weekend)
+    let designatedQuery = state.db.from("designated_days").select("id,reason").eq("date", date);
     if (classId) {
-      query = query.eq("class_id", classId);
+      designatedQuery = designatedQuery.eq("class_id", classId);
     } else {
-      query = query.is("class_id", null);
+      designatedQuery = designatedQuery.is("class_id", null);
     }
-    const holidays = await api(query);
-    return holidays.length > 0;
+    const designated = await api(designatedQuery);
+    if (designated.length > 0) {
+      return { type: 'designated', reason: designated[0].reason || 'Designated Day' };
+    }
+    
+    // Check if date is a holiday
+    let holidayQuery = state.db.from("holidays").select("id,reason").eq("date", date);
+    if (classId) {
+      holidayQuery = holidayQuery.eq("class_id", classId);
+    } else {
+      holidayQuery = holidayQuery.is("class_id", null);
+    }
+    const holidays = await api(holidayQuery);
+    if (holidays.length > 0) {
+      return { type: 'holiday', reason: holidays[0].reason || 'Holiday' };
+    }
+    
+    if (isWeekendDay) {
+      return { type: 'weekend', reason: 'Weekend' };
+    }
+    
+    return { type: 'normal', reason: '' };
+  }
+
+  // --- Helper: Check if date is holiday (for attendance marking) ---
+  async function checkIfHolidayOrWeekend(date, classId) {
+    const dayType = await getDayType(date, classId);
+    return dayType.type === 'holiday' || dayType.type === 'weekend';
   }
 
   // --- Attendance ---
@@ -524,8 +551,11 @@
       }
     }
     
-    const isHolidayOrWeekend = await checkIfHolidayOrWeekend(date, classId);
-    if (isTeacher && isHolidayOrWeekend && !allowHolidays) {
+    const dayType = await getDayType(date, classId);
+    const isHolidayOrWeekend = dayType.type === 'holiday' || dayType.type === 'weekend';
+    const isDesignated = dayType.type === 'designated';
+    
+    if (isTeacher && isHolidayOrWeekend && !allowHolidays && !isDesignated) {
       flash("⚠️ Attendance cannot be marked on holidays or weekends.", true);
       $("#roster").innerHTML = empty("Attendance cannot be marked on holidays or weekends.");
       $("#save-attendance").disabled = true;
@@ -561,8 +591,20 @@
       flash("⚠️ Marking attendance for past dates is restricted by admin.", true);
     }
     
+    // Show day type info
+    let dayTypeInfo = '';
+    if (isDesignated) {
+      dayTypeInfo = `<div style="background:#dbeafe;border:1px solid #3b82f6;padding:10px;border-radius:6px;margin-bottom:10px;color:#1e40af;">
+        📌 This date is marked as a <strong>Designated Day</strong>: ${esc(dayType.reason)}
+      </div>`;
+    } else if (isHolidayOrWeekend) {
+      dayTypeInfo = `<div style="background:#fef3c7;border:1px solid #f59e0b;padding:10px;border-radius:6px;margin-bottom:10px;color:#92400e;">
+        📅 This date is a <strong>${dayType.type === 'holiday' ? 'Holiday' : 'Weekend'}</strong>${dayType.reason ? ': ' + esc(dayType.reason) : ''}
+      </div>`;
+    }
+    
     $("#roster").innerHTML = students.length ? 
-      `<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th>${admin ? '<th>Actions</th>' : ''}</tr></thead><tbody>${students.map(s => { 
+      `${dayTypeInfo}<div class="table-wrap"><table><thead><tr><th>Roll no.</th><th>Student</th><th>Status</th><th>Remarks</th>${admin ? '<th>Actions</th>' : ''}</tr></thead><tbody>${students.map(s => { 
         const r = map[s.id] || { status:"present", remarks:"" }; 
         const statuses = ['present', 'absent', 'leave'];
         const statusLabels = { present: 'Present', absent: 'Absent', leave: 'Leave' };
@@ -581,7 +623,8 @@
       }).join("")}</tbody></table></div>` : 
       empty("No active students exist in this class.");
     
-    const canSave = admin || (!isExisting && (!isPastDate || canMarkPast) && !isHolidayOrWeekend);
+    // Can save if admin OR (not existing AND (not past date OR can mark past) AND (not holiday/weekend OR is designated))
+    const canSave = admin || (!isExisting && (!isPastDate || canMarkPast) && (!isHolidayOrWeekend || isDesignated));
     $("#save-attendance").disabled = !students.length || !canSave;
     
     if (admin) {
@@ -697,8 +740,11 @@
     const isPastDate = date < isoToday();
     const canMarkPast = admin || state.allowPastAttendance;
     
-    const isHolidayOrWeekend = await checkIfHolidayOrWeekend(date, classId);
-    if (isTeacher && isHolidayOrWeekend && !allowHolidays) {
+    const dayType = await getDayType(date, classId);
+    const isHolidayOrWeekend = dayType.type === 'holiday' || dayType.type === 'weekend';
+    const isDesignated = dayType.type === 'designated';
+    
+    if (isTeacher && isHolidayOrWeekend && !allowHolidays && !isDesignated) {
       flash("⚠️ Attendance cannot be marked on holidays or weekends.", true);
       return;
     }
@@ -1035,21 +1081,40 @@
     const allDates = getDateRangeArray(from, to);
     const totalDaysInRange = allDates.length;
     
+    // Get all holidays and designated days for the date range
     let holidayQuery = state.db.from("holidays").select("date,class_id").gte("date", from).lte("date", to);
     if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
     const holidays = await api(holidayQuery);
     const holidayDates = new Set(holidays.map(h => h.date));
     
+    let designatedQuery = state.db.from("designated_days").select("date,class_id").gte("date", from).lte("date", to);
+    if (classId) designatedQuery = designatedQuery.eq("class_id", classId);
+    const designatedDays = await api(designatedQuery);
+    const designatedDates = new Set(designatedDays.map(d => d.date));
+    
+    // Calculate holidays and designated days
     let totalHolidays = 0;
+    let totalDesignatedDays = 0;
+    const dateTypeMap = {};
+    
     allDates.forEach(date => {
       const isWeekendDay = isWeekend(date);
       const isHolidayDay = holidayDates.has(date);
-      if (isWeekendDay || isHolidayDay) {
+      const isDesignatedDay = designatedDates.has(date);
+      
+      // Designated days override holidays and weekends
+      if (isDesignatedDay) {
+        totalDesignatedDays++;
+        dateTypeMap[date] = 'designated';
+      } else if (isHolidayDay || isWeekendDay) {
         totalHolidays++;
+        dateTypeMap[date] = isHolidayDay ? 'holiday' : 'weekend';
+      } else {
+        dateTypeMap[date] = 'normal';
       }
     });
     
-    const totalDesignatedDays = totalDaysInRange - totalHolidays;
+    const totalDesignatedDaysCount = totalDesignatedDays;
     
     let studentQuery = state.db.from("students").select("id,name,roll_number,class_id,classes(name,section)").eq("active", true);
     if (classId) studentQuery = studentQuery.eq("class_id", classId);
@@ -1077,20 +1142,27 @@
       });
       
       let studentHolidayCount = 0;
+      let studentDesignatedCount = 0;
       let designatedDaysCount = 0;
       let presentCount = 0;
       let absentCount = 0;
       let leaveCount = 0;
       
       allDates.forEach(date => {
-        const isWeekendDay = isWeekend(date);
-        const isHolidayDay = holidayDates.has(date);
-        const isHolidayOrWeekend = isWeekendDay || isHolidayDay;
+        const dayType = dateTypeMap[date] || 'normal';
         const status = recordMap[date];
         
-        if (isHolidayOrWeekend) {
+        if (dayType === 'holiday' || dayType === 'weekend') {
           studentHolidayCount++;
+        } else if (dayType === 'designated') {
+          studentDesignatedCount++;
+          designatedDaysCount++;
+          // Attendance on designated days counts towards attendance
+          if (status === 'present') presentCount++;
+          else if (status === 'absent') absentCount++;
+          else if (status === 'leave') leaveCount++;
         } else {
+          // Normal day
           designatedDaysCount++;
           if (status === 'present') presentCount++;
           else if (status === 'absent') absentCount++;
@@ -1098,6 +1170,7 @@
         }
       });
       
+      // Attendance percentage is based on designated days (normal + designated days)
       const attendancePercentage = designatedDaysCount > 0 ? Math.round((presentCount / designatedDaysCount) * 100) : 0;
       
       return {
@@ -1107,6 +1180,7 @@
         class: student.classes ? `${student.classes.name}${student.classes.section ? ` — ${student.classes.section}` : ''}` : 'N/A',
         totalDays: totalDaysInRange,
         holidayCount: studentHolidayCount,
+        designatedCount: studentDesignatedCount,
         designatedDays: designatedDaysCount,
         presentCount: presentCount,
         absentCount: absentCount,
@@ -1119,7 +1193,7 @@
     state.reportDateRange = { from, to };
     state.reportTotalDays = totalDaysInRange;
     state.reportTotalHolidays = totalHolidays;
-    state.reportTotalDesignatedDays = totalDesignatedDays;
+    state.reportTotalDesignatedDays = totalDesignatedDaysCount;
     
     state.reportRows = records.map(r => {
       const session = sessions.find(s => s.id === r.session_id);
@@ -1140,13 +1214,13 @@
     const totalPresent = studentResults.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = studentResults.reduce((sum, s) => sum + s.absentCount, 0);
     const totalLeave = studentResults.reduce((sum, s) => sum + s.leaveCount, 0);
-    const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
+    const overallAttendance = totalDesignatedDaysCount > 0 ? Math.round((totalPresent / totalDesignatedDaysCount) * 100) : 0;
     
     document.getElementById('report-summary').innerHTML = `
       <article><span>Total Students</span><strong>${totalStudents}</strong></article>
       <article><span>Total Days</span><strong>${totalDaysInRange}</strong></article>
       <article><span>Holidays</span><strong>${totalHolidays}</strong></article>
-      <article><span>Designated Days</span><strong>${totalDesignatedDays}</strong></article>
+      <article><span>Designated Days</span><strong>${totalDesignatedDaysCount}</strong></article>
       <article><span>Present</span><strong>${totalPresent}</strong></article>
       <article><span>Absent</span><strong>${totalAbsent}</strong></article>
       <article><span>Leave</span><strong>${totalLeave}</strong></article>
@@ -1519,9 +1593,12 @@
       if (isToday) cellClass += ' today';
       if (isSelected) cellClass += ' selected';
       
-      if (isHolidayDay && isDesignatedDay) cellClass += ' both';
-      else if (isHolidayDay || isWeekendDay) cellClass += ' weekend';
-      else if (isDesignatedDay) cellClass += ' designated';
+      // Designated days override holidays and weekends
+      if (isDesignatedDay) {
+        cellClass += ' designated';
+      } else if (isHolidayDay || isWeekendDay) {
+        cellClass += ' weekend';
+      }
       
       let tooltip = `${day} ${monthNames[month]} ${year}`;
       let detailData = [];
@@ -1644,6 +1721,18 @@
     let skipCount = 0;
     
     for (const date of selectedDates) {
+      // If marking as designated, remove any existing holiday for this date (designated overrides holiday)
+      if (type === 'designated') {
+        // Check if there's a holiday for this date
+        let holidayQuery = state.db.from("holidays").select("id").eq("date", date);
+        if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
+        else holidayQuery = holidayQuery.is("class_id", null);
+        const existingHoliday = await api(holidayQuery.maybeSingle());
+        if (existingHoliday) {
+          await api(state.db.from("holidays").delete().eq("id", existingHoliday.id));
+        }
+      }
+      
       let query = state.db.from(table).select("id").eq("date", date);
       if (classId) query = query.eq("class_id", classId);
       else query = query.is("class_id", null);
@@ -1664,6 +1753,9 @@
     
     if (successCount > 0) {
       flash(`✅ ${successCount} day(s) marked as ${label}. ${skipCount > 0 ? `⚠️ ${skipCount} already existed.` : ''}`);
+      if (type === 'designated') {
+        flash(`ℹ️ Any existing holidays on these dates were removed.`, false);
+      }
     } else if (skipCount > 0) {
       flash(`⚠️ All ${skipCount} day(s) already have ${label}.`, true);
     }
