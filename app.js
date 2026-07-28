@@ -25,7 +25,13 @@
     teacherPermissions: null
   };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  const isoToday = () => new Date().toISOString().slice(0, 10);
+  // Format a Date object as YYYY-MM-DD using its LOCAL calendar date.
+  // (Date#toISOString() converts to UTC first, which silently rolls the
+  // date back by one day for anyone in a positive UTC-offset timezone —
+  // e.g. Pakistan, UTC+5 — during the first few hours after local midnight.
+  // Every "today" / "this month" calculation in the app must use this.)
+  const toLocalISODate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const isoToday = () => toLocalISODate(new Date());
   const esc = (v = "") => String(v).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[c]);
   const flash = (message, error = false) => { 
     const el = $("#flash"); 
@@ -932,7 +938,7 @@
     // ALWAYS set to 1st of current month for from date and today for to date
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const fromDate = firstDay.toISOString().slice(0, 10);
+    const fromDate = toLocalISODate(firstDay);
     const toDate = isoToday();
     
     document.getElementById("report-from").value = fromDate;
@@ -1449,13 +1455,13 @@
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const today = new Date();
-    const todayStr = today.toISOString().slice(0, 10);
+    const todayStr = toLocalISODate(today);
     
     await getClasses();
     const classId = document.getElementById('calendar-class-filter')?.value || '';
     
-    const monthStart = new Date(year, month, 1).toISOString().slice(0, 10);
-    const monthEnd = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+    const monthStart = toLocalISODate(new Date(year, month, 1));
+    const monthEnd = toLocalISODate(new Date(year, month + 1, 0));
     
     let holidayQuery = state.db.from("holidays").select("date,class_id,reason").gte("date", monthStart).lte("date", monthEnd);
     if (classId) holidayQuery = holidayQuery.eq("class_id", classId);
@@ -1919,7 +1925,7 @@
     const now = new Date();
     const monthAgo = new Date(now);
     monthAgo.setMonth(monthAgo.getMonth() - 1);
-    document.getElementById('clear-from').value = monthAgo.toISOString().slice(0, 10);
+    document.getElementById('clear-from').value = toLocalISODate(monthAgo);
     document.getElementById('clear-to').value = isoToday();
     document.getElementById('clear-attendance').onclick = clearAttendanceData;
     applyRoleVisibility();
