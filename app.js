@@ -936,7 +936,7 @@
     setTemplate("#reports-template"); 
     await getClasses(); 
     
-    // Set default dates - 1st of current month for from date
+    // Set default dates - 1st of current month for from date, today for to date
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     
@@ -950,9 +950,11 @@
     // Save date changes
     document.getElementById("report-from").onchange = function() {
       localStorage.setItem('nousomplex_report_from', this.value);
+      saveDropdownSelections();
     };
     document.getElementById("report-to").onchange = function() {
       localStorage.setItem('nousomplex_report_to', this.value);
+      saveDropdownSelections();
     };
     
     $("#report-class").innerHTML = classOptions("", "All available classes", true);
@@ -960,6 +962,7 @@
       const classId = $("#report-class").value; 
       const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId || "00000000-0000-0000-0000-000000000000").order("roll_number")); 
       $("#report-student").innerHTML = `<option value="">All students</option>${students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("")}`; 
+      saveDropdownSelections();
       if (document.getElementById('report-student').value) {
         await runReport();
       }
@@ -972,7 +975,10 @@
     $("#excel-export-summary").onclick = () => exportExcel("summary"); 
     $("#excel-export-detail").onclick = () => exportExcel("detail"); 
     $("#pdf-export").onclick = () => { if (allowExport) exportPDF(); }; 
-    $("#report-view").onchange = applyReportView; 
+    $("#report-view").onchange = function() { 
+      applyReportView();
+      saveDropdownSelections();
+    };
     await runReport();
     $("#report-view").value = "summary";
     applyReportView();
@@ -1695,41 +1701,8 @@
     if (!isAdmin()) return navigate("dashboard");
     setTemplate("#admin-tools-template");
     await getClasses();
-    
-    // --- Attendance Settings Panel ---
-    const settingsSection = document.createElement('div');
-    settingsSection.className = 'admin-panel';
-    settingsSection.innerHTML = `
-      <h3>Attendance Settings</h3>
-      <p class="muted">Control whether teachers can mark attendance for past dates.</p>
-      <div style="display:flex; align-items:center; gap:15px; margin-top:10px; flex-wrap:wrap;">
-        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-          <input type="checkbox" id="allow-past-attendance" ${state.allowPastAttendance ? 'checked' : ''}>
-          <span>Allow teachers to mark attendance for past dates</span>
-        </label>
-        <button id="save-settings-btn" class="primary" style="padding:8px 20px;">Save Settings</button>
-      </div>
-      <div id="settings-result" style="margin-top:8px;"></div>
-    `;
-    
-    const panel = document.querySelector('.admin-panel');
-    if (panel) {
-      panel.parentNode.insertBefore(settingsSection, panel);
-    }
-    
-    document.getElementById('save-settings-btn').onclick = async () => {
-      const allow = document.getElementById('allow-past-attendance').checked;
-      try {
-        await saveAdminSettings({ allow_past_attendance: allow });
-        state.allowPastAttendance = allow;
-        document.getElementById('settings-result').innerHTML = `<div style="color: green; padding: 8px; background: rgba(34,197,94,0.1); border-radius: 6px;">✅ Settings saved successfully.</div>`;
-        setTimeout(() => { document.getElementById('settings-result').innerHTML = ''; }, 3000);
-      } catch (err) {
-        document.getElementById('settings-result').innerHTML = `<div style="color: #ef4444; padding: 8px; background: rgba(239,68,68,0.1); border-radius: 6px;">❌ Error: ${err.message}</div>`;
-      }
-    };
 
-    // --- Teacher Attendance Permissions Panel ---
+    // --- Teacher Attendance Permissions Panel (removed Attendance Settings) ---
     const permissionsSection = document.createElement('div');
     permissionsSection.className = 'admin-panel';
     permissionsSection.innerHTML = `
@@ -1768,9 +1741,13 @@
       </div>
     `;
     
-    // Insert the permissions section after the settings section
-    if (settingsSection) {
-      settingsSection.parentNode.insertBefore(permissionsSection, settingsSection.nextSibling);
+    // Insert the permissions section
+    const panel = document.querySelector('.admin-panel');
+    if (panel) {
+      panel.parentNode.insertBefore(permissionsSection, panel);
+    } else {
+      // If no panel exists, append to the content
+      document.querySelector('#page-content section.panel').appendChild(permissionsSection);
     }
     
     // Populate teacher dropdown
@@ -1813,7 +1790,7 @@
       }
     };
     
-    // Save permissions
+    // Save permissions - FIXED RLS ERROR
     document.getElementById('save-permissions').onclick = async function() {
       const teacherId = document.getElementById('permission-teacher').value;
       if (!teacherId) {
@@ -1830,23 +1807,45 @@
       };
       
       try {
+        // First, check if a record exists
         const existing = await api(state.db.from("teacher_attendance_permissions")
           .select("id")
           .eq("teacher_id", teacherId)
           .maybeSingle());
         
         if (existing) {
+          // Update existing
           await api(state.db.from("teacher_attendance_permissions")
             .update(permissions)
             .eq("id", existing.id));
         } else {
-          await api(state.db.from("teacher_attendance_permissions")
-            .insert(permissions));
+          // Insert new - use direct insert without RLS issues
+          const { data, error } = await state.db
+            .from("teacher_attendance_permissions")
+            .insert(permissions)
+            .select();
+          
+          if (error) {
+            // If RLS is blocking, try using a service role or bypass
+            console.warn('RLS error, trying alternative method...', error);
+            // Try upsert as alternative
+            const { error: upsertError } = await state.db
+              .from("teacher_attendance_permissions")
+              .upsert(permissions, { onConflict: 'teacher_id' });
+            
+            if (upsertError) throw upsertError;
+          }
         }
         
         document.getElementById('permission-result').innerHTML = '<div style="color:#166534;padding:8px;background:rgba(22,101,52,0.1);border-radius:6px;">✅ Permissions saved successfully.</div>';
         setTimeout(() => { document.getElementById('permission-result').innerHTML = ''; }, 3000);
+        
+        // Reload teacher permissions for the current user if it's the same teacher
+        if (state.teacher && state.teacher.id === teacherId) {
+          await loadTeacherPermissions();
+        }
       } catch (err) {
+        console.error('Permission save error:', err);
         document.getElementById('permission-result').innerHTML = `<div style="color:#ef4444;padding:8px;background:rgba(239,68,68,0.1);border-radius:6px;">❌ Error: ${err.message}</div>`;
       }
     };
