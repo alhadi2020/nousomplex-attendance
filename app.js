@@ -927,6 +927,10 @@
         // longer match the "Show" dropdown.
         if (document.getElementById('report-view')) {
           applyReportView();
+          // Also re-run the report if we have data to show the correct details
+          if (state.reportStudentResults && state.reportStudentResults.length > 0) {
+            setTimeout(runReport, 100);
+          }
         }
       } catch (e) {
         console.warn('Could not restore dropdown selections:', e);
@@ -982,6 +986,10 @@
     $("#report-view").onchange = function() { 
       applyReportView();
       saveDropdownSelections();
+      // Re-run report when view changes to ensure data is fresh
+      if (state.reportStudentResults && state.reportStudentResults.length > 0) {
+        setTimeout(runReport, 100);
+      }
     };
     
     // Run the report first
@@ -997,6 +1005,8 @@
       // Force re-apply report view after restore
       if (document.getElementById('report-view')) {
         applyReportView();
+        // Re-run report to show data for restored selections
+        setTimeout(runReport, 200);
       }
     }, 300);
   }
@@ -1734,8 +1744,7 @@
         </div>
         <div id="permission-controls" style="display:none;">
           <div class="permission-grid">
-            <div class="permission-item">
-              <div class="step-number master">1</div>
+            <div class="permission-item master">
               <label>
                 <input type="checkbox" id="permission-can-mark" checked>
                 <span>
@@ -1745,7 +1754,6 @@
               </label>
             </div>
             <div class="permission-item sub" data-sub-permission>
-              <div class="step-number sub-step">2</div>
               <label>
                 <input type="checkbox" id="permission-past-dates" checked>
                 <span>
@@ -1755,7 +1763,6 @@
               </label>
             </div>
             <div class="permission-item sub" data-sub-permission>
-              <div class="step-number sub-step">3</div>
               <label>
                 <input type="checkbox" id="permission-future-dates">
                 <span>
@@ -1765,7 +1772,6 @@
               </label>
             </div>
             <div class="permission-item sub" data-sub-permission>
-              <div class="step-number sub-step">4</div>
               <label>
                 <input type="checkbox" id="permission-holidays">
                 <span>
