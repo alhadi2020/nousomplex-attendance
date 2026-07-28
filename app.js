@@ -892,6 +892,10 @@
         Object.keys(selections).forEach(id => {
           const select = document.getElementById(id);
           if (select) {
+            // Don't restore date inputs - they should be fixed
+            if (select.id === 'report-from' || select.id === 'report-to') {
+              return;
+            }
             select.value = selections[id];
           }
         });
@@ -915,7 +919,7 @@
     document.getElementById("report-from").value = fromDate;
     document.getElementById("report-to").value = toDate;
     
-    // Override localStorage with these values
+    // Store in localStorage for reference but dates will always reset on page load
     localStorage.setItem('nousomplex_report_from', fromDate);
     localStorage.setItem('nousomplex_report_to', toDate);
     
@@ -954,6 +958,7 @@
     $("#report-view").value = "summary";
     applyReportView();
     
+    // Restore dropdown selections (but NOT date inputs)
     setTimeout(restoreDropdownSelections, 200);
   }
 
@@ -1673,51 +1678,62 @@
     await getClasses();
 
     // --- Teacher Attendance Permissions Panel ---
-    const permissionsSection = document.createElement('div');
-    permissionsSection.className = 'admin-panel';
-    permissionsSection.innerHTML = `
-      <h3>Teacher Attendance Permissions</h3>
-      <p class="muted">Control which teachers can mark attendance and their date restrictions.</p>
-      <div style="margin-top:10px;">
-        <label style="display:block;font-weight:500;margin-bottom:5px;">Select Teacher:</label>
-        <select id="permission-teacher" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:10px;">
-          <option value="">Select a teacher...</option>
-        </select>
-      </div>
-      <div id="permission-controls" style="display:none;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:10px 0;">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="permission-can-mark" checked>
-            <span>Allow marking attendance</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="permission-past-dates" checked>
-            <span>Allow marking past dates</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="permission-future-dates">
-            <span>Allow marking future dates</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="permission-holidays">
-            <span>Allow marking holidays/weekends</span>
-          </label>
+    // Check if panel already exists, if not create it
+    let permissionsSection = document.querySelector('#permissions-panel');
+    if (!permissionsSection) {
+      permissionsSection = document.createElement('div');
+      permissionsSection.id = 'permissions-panel';
+      permissionsSection.className = 'admin-panel';
+      permissionsSection.innerHTML = `
+        <h3>Teacher Attendance Permissions</h3>
+        <p class="muted">Control which teachers can mark attendance and their date restrictions.</p>
+        <div style="margin-top:10px;">
+          <label style="display:block;font-weight:500;margin-bottom:5px;">Select Teacher:</label>
+          <select id="permission-teacher" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:10px;">
+            <option value="">Select a teacher...</option>
+          </select>
         </div>
-        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
-          <button id="save-permissions" class="primary" style="padding:8px 20px;">Save Permissions</button>
-          <button id="reset-permissions" class="secondary" style="padding:8px 20px;">Reset to Default</button>
+        <div id="permission-controls" style="display:none;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:10px 0;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="permission-can-mark" checked>
+              <span>Allow marking attendance</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="permission-past-dates" checked>
+              <span>Allow marking past dates</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="permission-future-dates">
+              <span>Allow marking future dates</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+              <input type="checkbox" id="permission-holidays">
+              <span>Allow marking holidays/weekends</span>
+            </label>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+            <button id="save-permissions" class="primary" style="padding:8px 20px;">Save Permissions</button>
+            <button id="reset-permissions" class="secondary" style="padding:8px 20px;">Reset to Default</button>
+          </div>
+          <div id="permission-result" style="margin-top:8px;"></div>
         </div>
-        <div id="permission-result" style="margin-top:8px;"></div>
-      </div>
-    `;
-    
-    const panel = document.querySelector('.admin-panel');
-    if (panel) {
-      panel.parentNode.insertBefore(permissionsSection, panel);
+      `;
+      
+      // Insert at the top of the panel section
+      const panel = document.querySelector('.panel');
+      if (panel) {
+        panel.insertBefore(permissionsSection, panel.firstChild);
+      }
     }
     
+    // Populate teacher dropdown
     const teachers = await api(state.db.from("teachers").select("id,name,profile_id").order("name"));
     const teacherSelect = document.getElementById('permission-teacher');
+    // Clear existing options except the first one
+    while (teacherSelect.options.length > 1) {
+      teacherSelect.remove(1);
+    }
     teachers.forEach(t => {
       const option = document.createElement('option');
       option.value = t.id;
@@ -1725,6 +1741,7 @@
       teacherSelect.appendChild(option);
     });
     
+    // Load permissions when teacher is selected
     teacherSelect.onchange = async function() {
       const teacherId = this.value;
       const controls = document.getElementById('permission-controls');
