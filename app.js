@@ -914,7 +914,11 @@
             if (select.id === 'report-from' || select.id === 'report-to') {
               return;
             }
-            select.value = selections[id];
+            // Check if the value exists in the select options
+            const optionExists = Array.from(select.options).some(opt => opt.value === selections[id]);
+            if (optionExists) {
+              select.value = selections[id];
+            }
           }
         });
         // Re-apply the report view (summary / detail / both) after restoring
@@ -979,12 +983,22 @@
       applyReportView();
       saveDropdownSelections();
     };
+    
+    // Run the report first
     await runReport();
+    
+    // Set default view
     $("#report-view").value = "summary";
     applyReportView();
     
-    // Restore dropdown selections (but NOT date inputs)
-    setTimeout(restoreDropdownSelections, 200);
+    // Restore dropdown selections AFTER data is loaded
+    setTimeout(() => {
+      restoreDropdownSelections();
+      // Force re-apply report view after restore
+      if (document.getElementById('report-view')) {
+        applyReportView();
+      }
+    }, 300);
   }
 
   function getDateRangeArray(from, to) {
@@ -1712,48 +1726,60 @@
       permissionsSection.innerHTML = `
         <h3>Teacher Attendance Permissions</h3>
         <p class="muted">Control which teachers can mark attendance and their date restrictions.</p>
-        <div style="margin-top:10px;">
-          <label style="display:block;font-weight:500;margin-bottom:5px;">Select Teacher:</label>
-          <select id="permission-teacher" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:10px;">
+        <div style="margin-top:15px;">
+          <label style="display:block;font-weight:600;margin-bottom:8px;color:#374151;">Select Teacher:</label>
+          <select id="permission-teacher" style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:15px;background:#f9fafb;">
             <option value="">Select a teacher...</option>
           </select>
         </div>
         <div id="permission-controls" style="display:none;">
-          <ol class="permission-sequence" style="list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:10px;">
-            <li style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb;">
-              <span style="font-weight:700;color:#4f46e5;min-width:18px;">1</span>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+          <div class="permission-grid">
+            <div class="permission-item">
+              <div class="step-number master">1</div>
+              <label>
                 <input type="checkbox" id="permission-can-mark" checked>
-                <span><strong>Allow marking attendance</strong><br><small class="muted">Master switch — turning this off disables all options below and blocks the teacher entirely.</small></span>
+                <span>
+                  <span class="label-text">Allow Marking Attendance</span>
+                  <span class="label-sub">Master switch — disables all options below if turned off</span>
+                </span>
               </label>
-            </li>
-            <li data-sub-permission style="display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px 30px;border:1px solid #e5e7eb;border-radius:8px;">
-              <span style="font-weight:700;color:#6b7280;min-width:18px;">2</span>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+            </div>
+            <div class="permission-item sub" data-sub-permission>
+              <div class="step-number sub-step">2</div>
+              <label>
                 <input type="checkbox" id="permission-past-dates" checked>
-                <span>Allow marking <strong>past</strong> dates</span>
+                <span>
+                  <span class="label-text">Allow Marking <strong>Past</strong> Dates</span>
+                  <span class="label-sub">Permit attendance entry for dates before today</span>
+                </span>
               </label>
-            </li>
-            <li data-sub-permission style="display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px 30px;border:1px solid #e5e7eb;border-radius:8px;">
-              <span style="font-weight:700;color:#6b7280;min-width:18px;">3</span>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+            </div>
+            <div class="permission-item sub" data-sub-permission>
+              <div class="step-number sub-step">3</div>
+              <label>
                 <input type="checkbox" id="permission-future-dates">
-                <span>Allow marking <strong>future</strong> dates</span>
+                <span>
+                  <span class="label-text">Allow Marking <strong>Future</strong> Dates</span>
+                  <span class="label-sub">Permit attendance entry for dates after today</span>
+                </span>
               </label>
-            </li>
-            <li data-sub-permission style="display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px 30px;border:1px solid #e5e7eb;border-radius:8px;">
-              <span style="font-weight:700;color:#6b7280;min-width:18px;">4</span>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+            </div>
+            <div class="permission-item sub" data-sub-permission>
+              <div class="step-number sub-step">4</div>
+              <label>
                 <input type="checkbox" id="permission-holidays">
-                <span>Allow marking on <strong>holidays / weekends</strong></span>
+                <span>
+                  <span class="label-text">Allow Marking on <strong>Holidays / Weekends</strong></span>
+                  <span class="label-sub">Permit attendance entry on non-school days</span>
+                </span>
               </label>
-            </li>
-          </ol>
-          <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
-            <button id="save-permissions" class="primary" style="padding:8px 20px;">Save Permissions</button>
-            <button id="reset-permissions" class="secondary" style="padding:8px 20px;">Reset to Default</button>
+            </div>
           </div>
-          <div id="permission-result" style="margin-top:8px;"></div>
+          <div style="display:flex;gap:12px;margin-top:15px;flex-wrap:wrap;">
+            <button id="save-permissions" class="primary" style="padding:10px 28px;font-weight:600;flex:0 0 auto;">💾 Save Permissions</button>
+            <button id="reset-permissions" class="secondary" style="padding:10px 28px;font-weight:600;flex:0 0 auto;">↺ Reset to Default</button>
+          </div>
+          <div id="permission-result" style="margin-top:10px;font-size:14px;"></div>
         </div>
       `;
       
@@ -1786,6 +1812,7 @@
         const checkbox = row.querySelector('input[type="checkbox"]');
         checkbox.disabled = !masterOn;
         row.style.opacity = masterOn ? '1' : '0.5';
+        row.style.pointerEvents = masterOn ? 'auto' : 'none';
       });
     }
     document.getElementById('permission-can-mark').onchange = applyPermissionSequenceState;
