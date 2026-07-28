@@ -21,7 +21,8 @@
     recoveryMode: false,
     currentAttendanceDate: null,
     currentAttendanceClass: null,
-    allowPastAttendance: true // Default setting
+    allowPastAttendance: true, // Default setting
+    teacherPermissions: null // Store teacher permissions
   };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
@@ -131,6 +132,11 @@
       // Load admin settings
       await loadAdminSettings();
       
+      // Load teacher permissions if teacher
+      if (teacher && !isAdmin()) {
+        await loadTeacherPermissions();
+      }
+      
       const displayName = state.profile.full_name || state.profile.email;
       $("#user-name").textContent = displayName;
       $("#user-role").textContent = state.profile.role;
@@ -158,6 +164,30 @@
       hideLoadingScreen();
       sessionLoading = false;
       showAuth();
+    }
+  }
+
+  // --- Load Teacher Permissions ---
+  async function loadTeacherPermissions() {
+    try {
+      const perm = await api(state.db.from("teacher_attendance_permissions")
+        .select("*")
+        .eq("teacher_id", state.teacher.id)
+        .maybeSingle());
+      state.teacherPermissions = perm || {
+        can_mark_attendance: true,
+        allow_past_dates: true,
+        allow_future_dates: false,
+        allow_holidays: false
+      };
+    } catch (e) {
+      console.warn('Could not load teacher permissions:', e);
+      state.teacherPermissions = {
+        can_mark_attendance: true,
+        allow_past_dates: true,
+        allow_future_dates: false,
+        allow_holidays: false
+      };
     }
   }
 
@@ -334,6 +364,8 @@
         dashboard, attendance, students, classes, teachers, reports, calendar, "admin-tools": adminTools
       })[page](); 
       setTimeout(applyRoleVisibility, 100);
+      // Restore dropdown selections after navigation
+      setTimeout(restoreDropdownSelections, 200);
     } catch (e) { 
       content.innerHTML = empty(e.message); 
       flash(e.message, true); 
@@ -365,6 +397,26 @@
     applyRoleVisibility();
   }
 
+  // --- Helper: Check if date is weekend ---
+  function isWeekend(dateStr) {
+    const d = new Date(dateStr);
+    return d.getDay() === 0 || d.getDay() === 6;
+  }
+
+  // --- Helper: Check if date is holiday ---
+  async function checkIfHolidayOrWeekend(date, classId) {
+    if (isWeekend(date)) return true;
+    
+    let query = state.db.from("holidays").select("id").eq("date", date);
+    if (classId) {
+      query = query.eq("class_id", classId);
+    } else {
+      query = query.is("class_id", null);
+    }
+    const holidays = await api(query);
+    return holidays.length > 0;
+  }
+
   // --- Attendance ---
   async function attendance() {
     setTemplate("#attendance-template"); 
@@ -372,14 +424,48 @@
     const savedDate = localStorage.getItem('nousomplex_attendance_date') || isoToday();
     const savedClass = localStorage.getItem('nousomplex_attendance_class') || "";
     
+    const admin = isAdmin();
+    const isTeacher = !admin && state.teacher;
+    
+    // Check teacher permissions
+    let canMarkAttendance = admin;
+    if (isTeacher && state.teacherPermissions) {
+      canMarkAttendance = state.teacherPermissions.can_mark_attendance !== false;
+    }
+    
     $("#attendance-date").value = savedDate; 
     $("#attendance-class").innerHTML = classOptions(savedClass);
     $("#load-roster").onclick = loadRoster; 
     $("#save-attendance").onclick = saveAttendance;
+    
+    // Show/hide attendance UI based on permissions
+    const attendanceUI = document.getElementById('attendance-ui');
+    const restrictedMsg = document.getElementById('attendance-restricted-message');
+    
+    if (!canMarkAttendance) {
+      if (attendanceUI) attendanceUI.style.display = 'none';
+      if (restrictedMsg) {
+        restrictedMsg.style.display = 'block';
+        restrictedMsg.innerHTML = `
+          <div class="panel" style="background:#fef2f2;border:1px solid #fecaca;padding:20px;border-radius:8px;text-align:center;">
+            <p style="color:#991b1b;font-weight:600;margin:0;">⚠️ You are not authorized to mark attendance. Please contact the administrator.</p>
+          </div>
+        `;
+      }
+      $("#load-roster").disabled = true;
+      $("#save-attendance").disabled = true;
+      applyRoleVisibility();
+      return;
+    } else {
+      if (attendanceUI) attendanceUI.style.display = 'block';
+      if (restrictedMsg) restrictedMsg.style.display = 'none';
+      $("#load-roster").disabled = false;
+    }
+    
     applyRoleVisibility();
     
     // Auto-load roster if there's a saved class
-    if (savedClass) {
+    if (savedClass && canMarkAttendance) {
       setTimeout(() => loadRoster(), 300);
     }
   }
@@ -396,6 +482,65 @@
     
     if (!classId || !date) return flash("Choose a class and date.", true);
     
+    const admin = isAdmin();
+    const isTeacher = !admin && state.teacher;
+    
+    // Check teacher permissions
+    let canMarkAttendance = admin;
+    let allowPastDates = admin;
+    let allowFutureDates = admin;
+    let allowHolidays = admin;
+    
+    if (isTeacher && state.teacherPermissions) {
+      const perm = state.teacherPermissions;
+      canMarkAttendance = perm.can_mark_attendance !== false;
+      allowPastDates = perm.allow_past_dates !== false;
+      allowFutureDates = perm.allow_future_dates === true;
+      allowHolidays = perm.allow_holidays === true;
+    } else if (isTeacher) {
+      // Default permissions if not loaded
+      canMarkAttendance = true;
+      allowPastDates = true;
+      allowFutureDates = false;
+      allowHolidays = false;
+    }
+    
+    // Check if teacher is allowed to mark attendance at all
+    if (isTeacher && !canMarkAttendance) {
+      flash("⚠️ You are not authorized to mark attendance.", true);
+      $("#roster").innerHTML = empty("You are not authorized to mark attendance. Please contact the administrator.");
+      $("#save-attendance").disabled = true;
+      return;
+    }
+    
+    // Check date restrictions
+    const isPastDate = date < isoToday();
+    const isFutureDate = date > isoToday();
+    
+    if (isTeacher) {
+      if (isPastDate && !allowPastDates) {
+        flash("⚠️ Marking attendance for past dates is restricted for you.", true);
+        $("#roster").innerHTML = empty("You are not allowed to mark attendance for past dates.");
+        $("#save-attendance").disabled = true;
+        return;
+      }
+      if (isFutureDate && !allowFutureDates) {
+        flash("⚠️ Marking attendance for future dates is restricted for you.", true);
+        $("#roster").innerHTML = empty("You are not allowed to mark attendance for future dates.");
+        $("#save-attendance").disabled = true;
+        return;
+      }
+    }
+    
+    // Check for holidays/weekends
+    const isHolidayOrWeekend = await checkIfHolidayOrWeekend(date, classId);
+    if (isTeacher && isHolidayOrWeekend && !allowHolidays) {
+      flash("⚠️ Attendance cannot be marked on holidays or weekends.", true);
+      $("#roster").innerHTML = empty("Attendance cannot be marked on holidays or weekends.");
+      $("#save-attendance").disabled = true;
+      return;
+    }
+    
     // Check if attendance already exists for this date/class
     const existingSession = await api(state.db.from("attendance_sessions").select("id,created_at").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const isExisting = !!existingSession;
@@ -405,20 +550,14 @@
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
     const map = Object.fromEntries(existing.map(r => [r.student_id, r]));
     
-    // Check if admin for edit controls
-    const admin = isAdmin();
-    
-    // For teachers: check if attendance already exists and they're not admin
-    // Also check if they're allowed to mark past attendance
-    const isTeacher = !admin && state.teacher;
-    const isPastDate = date < isoToday();
+    // Check if they're allowed to mark past attendance (admin override)
     const canMarkPast = isAdmin() || state.allowPastAttendance;
     const canEdit = admin || (!isExisting && (!isPastDate || canMarkPast));
     
     // Show warning for existing attendance
     if (isExisting && isTeacher) {
       flash("⚠️ Attendance has already been marked for this class on this date. Changes are not allowed.", true);
-    } else if (isPastDate && isTeacher && !canMarkPast) {
+    } else if (isPastDate && isTeacher && !allowPastDates) {
       flash("⚠️ Marking attendance for past dates is restricted by admin.", true);
     }
     
@@ -443,7 +582,7 @@
       empty("No active students exist in this class.");
     
     // Disable save button if teacher can't edit
-    const canSave = admin || (!isExisting && (!isPastDate || canMarkPast));
+    const canSave = admin || (!isExisting && (!isPastDate || canMarkPast) && !isHolidayOrWeekend);
     $("#save-attendance").disabled = !students.length || !canSave;
     
     // Add edit functionality for admin
@@ -545,18 +684,43 @@
     const date = $("#attendance-date").value;
     if (!classId || !date) return;
     
+    const admin = isAdmin();
+    const isTeacher = !admin && state.teacher;
+    
+    // Check if teacher is allowed
+    let canMarkAttendance = admin;
+    let allowPastDates = admin;
+    let allowHolidays = admin;
+    
+    if (isTeacher && state.teacherPermissions) {
+      canMarkAttendance = state.teacherPermissions.can_mark_attendance !== false;
+      allowPastDates = state.teacherPermissions.allow_past_dates !== false;
+      allowHolidays = state.teacherPermissions.allow_holidays === true;
+    }
+    
+    if (isTeacher && !canMarkAttendance) {
+      flash("⚠️ You are not authorized to mark attendance.", true);
+      return;
+    }
+    
     // Check if attendance already exists
     const existingSession = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
-    const isTeacher = !isAdmin() && state.teacher;
     const isPastDate = date < isoToday();
-    const canMarkPast = isAdmin() || state.allowPastAttendance;
+    const canMarkPast = admin || state.allowPastAttendance;
+    
+    // Check for holidays/weekends
+    const isHolidayOrWeekend = await checkIfHolidayOrWeekend(date, classId);
+    if (isTeacher && isHolidayOrWeekend && !allowHolidays) {
+      flash("⚠️ Attendance cannot be marked on holidays or weekends.", true);
+      return;
+    }
     
     if (isTeacher && existingSession) {
       flash("⚠️ Attendance already marked for this class on this date. Changes are not allowed.", true);
       return;
     }
-    if (isTeacher && isPastDate && !canMarkPast) {
-      flash("⚠️ Marking attendance for past dates is restricted by admin.", true);
+    if (isTeacher && isPastDate && !allowPastDates) {
+      flash("⚠️ Marking attendance for past dates is restricted for you.", true);
       return;
     }
     
@@ -739,16 +903,58 @@
     catch (err) { flash(err.message, true); }
   }
 
-  // ============================================================
-  // ===== REPORTS =====
-  // ============================================================
+  // --- Dropdown Selections Persistence ---
+  function saveDropdownSelections() {
+    const selections = {};
+    document.querySelectorAll('select').forEach(select => {
+      if (select.id) {
+        selections[select.id] = select.value;
+      }
+    });
+    localStorage.setItem('nousomplex_dropdown_selections', JSON.stringify(selections));
+  }
 
+  function restoreDropdownSelections() {
+    const saved = localStorage.getItem('nousomplex_dropdown_selections');
+    if (saved) {
+      try {
+        const selections = JSON.parse(saved);
+        Object.keys(selections).forEach(id => {
+          const select = document.getElementById(id);
+          if (select) {
+            select.value = selections[id];
+          }
+        });
+      } catch (e) {
+        console.warn('Could not restore dropdown selections:', e);
+      }
+    }
+  }
+
+  // --- Reports ---
   async function reports() {
     setTemplate("#reports-template"); 
     await getClasses(); 
-    const now = new Date(), start = new Date(now.getFullYear(), now.getMonth(), 1); 
-    $("#report-from").value = start.toISOString().slice(0, 10); 
-    $("#report-to").value = isoToday(); 
+    
+    // Set default dates - 1st of current month for from date
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    // Check for saved dates
+    const savedFrom = localStorage.getItem('nousomplex_report_from');
+    const savedTo = localStorage.getItem('nousomplex_report_to');
+    
+    document.getElementById("report-from").value = savedFrom || firstDay.toISOString().slice(0, 10);
+    document.getElementById("report-to").value = savedTo || isoToday();
+    
+    // Save date changes
+    document.getElementById("report-from").onchange = function() {
+      localStorage.setItem('nousomplex_report_from', this.value);
+    };
+    document.getElementById("report-to").onchange = function() {
+      localStorage.setItem('nousomplex_report_to', this.value);
+    };
+    
     $("#report-class").innerHTML = classOptions("", "All available classes", true);
     $("#report-class").onchange = async () => { 
       const classId = $("#report-class").value; 
@@ -770,11 +976,9 @@
     await runReport();
     $("#report-view").value = "summary";
     applyReportView();
-  }
-
-  function isWeekend(dateStr) {
-    const d = new Date(dateStr);
-    return d.getDay() === 0 || d.getDay() === 6;
+    
+    // Restore dropdown selections
+    setTimeout(restoreDropdownSelections, 200);
   }
 
   function getDateRangeArray(from, to) {
@@ -1205,10 +1409,7 @@
     else { flash("Please allow popups to export PDF.", true); }
   }
 
-  // ============================================================
-  // ===== CALENDAR VIEW WITH MULTI-SELECT =====
-  // ============================================================
-
+  // --- Calendar View ---
   let calendarDate = new Date();
   let selectedDates = new Set();
 
@@ -1495,23 +1696,7 @@
     setTemplate("#admin-tools-template");
     await getClasses();
     
-    const classOptionsHtml = `<option value="">All Classes</option>` + 
-      state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
-    
-    document.getElementById('clear-class').innerHTML = classOptionsHtml;
-    
-    document.getElementById('clear-class').onchange = async () => {
-      const classId = document.getElementById('clear-class').value;
-      if (classId) {
-        const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).order("roll_number"));
-        document.getElementById('clear-student').innerHTML = `<option value="">All Students</option>` + 
-          students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("");
-      } else {
-        document.getElementById('clear-student').innerHTML = `<option value="">All Students</option>`;
-      }
-    };
-    
-    // Admin Settings - Past Attendance Control
+    // --- Attendance Settings Panel ---
     const settingsSection = document.createElement('div');
     settingsSection.className = 'admin-panel';
     settingsSection.innerHTML = `
@@ -1543,6 +1728,180 @@
         document.getElementById('settings-result').innerHTML = `<div style="color: #ef4444; padding: 8px; background: rgba(239,68,68,0.1); border-radius: 6px;">❌ Error: ${err.message}</div>`;
       }
     };
+
+    // --- Teacher Attendance Permissions Panel ---
+    const permissionsSection = document.createElement('div');
+    permissionsSection.className = 'admin-panel';
+    permissionsSection.innerHTML = `
+      <h3>Teacher Attendance Permissions</h3>
+      <p class="muted">Control which teachers can mark attendance and their date restrictions.</p>
+      <div style="margin-top:10px;">
+        <label style="display:block;font-weight:500;margin-bottom:5px;">Select Teacher:</label>
+        <select id="permission-teacher" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;margin-bottom:10px;">
+          <option value="">Select a teacher...</option>
+        </select>
+      </div>
+      <div id="permission-controls" style="display:none;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:10px 0;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="permission-can-mark" checked>
+            <span>Allow marking attendance</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="permission-past-dates" checked>
+            <span>Allow marking past dates</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="permission-future-dates">
+            <span>Allow marking future dates</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="permission-holidays">
+            <span>Allow marking holidays/weekends</span>
+          </label>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+          <button id="save-permissions" class="primary" style="padding:8px 20px;">Save Permissions</button>
+          <button id="reset-permissions" class="secondary" style="padding:8px 20px;">Reset to Default</button>
+        </div>
+        <div id="permission-result" style="margin-top:8px;"></div>
+      </div>
+    `;
+    
+    // Insert the permissions section after the settings section
+    if (settingsSection) {
+      settingsSection.parentNode.insertBefore(permissionsSection, settingsSection.nextSibling);
+    }
+    
+    // Populate teacher dropdown
+    const teachers = await api(state.db.from("teachers").select("id,name,profile_id").order("name"));
+    const teacherSelect = document.getElementById('permission-teacher');
+    teachers.forEach(t => {
+      const option = document.createElement('option');
+      option.value = t.id;
+      option.textContent = t.name;
+      teacherSelect.appendChild(option);
+    });
+    
+    // Load permissions when teacher is selected
+    teacherSelect.onchange = async function() {
+      const teacherId = this.value;
+      const controls = document.getElementById('permission-controls');
+      if (!teacherId) {
+        controls.style.display = 'none';
+        return;
+      }
+      controls.style.display = 'block';
+      
+      // Load existing permissions
+      const perm = await api(state.db.from("teacher_attendance_permissions")
+        .select("*")
+        .eq("teacher_id", teacherId)
+        .maybeSingle());
+      
+      if (perm) {
+        document.getElementById('permission-can-mark').checked = perm.can_mark_attendance !== false;
+        document.getElementById('permission-past-dates').checked = perm.allow_past_dates !== false;
+        document.getElementById('permission-future-dates').checked = perm.allow_future_dates === true;
+        document.getElementById('permission-holidays').checked = perm.allow_holidays === true;
+      } else {
+        // Default permissions
+        document.getElementById('permission-can-mark').checked = true;
+        document.getElementById('permission-past-dates').checked = true;
+        document.getElementById('permission-future-dates').checked = false;
+        document.getElementById('permission-holidays').checked = false;
+      }
+    };
+    
+    // Save permissions
+    document.getElementById('save-permissions').onclick = async function() {
+      const teacherId = document.getElementById('permission-teacher').value;
+      if (!teacherId) {
+        document.getElementById('permission-result').innerHTML = '<div style="color:#ef4444;">Please select a teacher first.</div>';
+        return;
+      }
+      
+      const permissions = {
+        teacher_id: teacherId,
+        can_mark_attendance: document.getElementById('permission-can-mark').checked,
+        allow_past_dates: document.getElementById('permission-past-dates').checked,
+        allow_future_dates: document.getElementById('permission-future-dates').checked,
+        allow_holidays: document.getElementById('permission-holidays').checked
+      };
+      
+      try {
+        const existing = await api(state.db.from("teacher_attendance_permissions")
+          .select("id")
+          .eq("teacher_id", teacherId)
+          .maybeSingle());
+        
+        if (existing) {
+          await api(state.db.from("teacher_attendance_permissions")
+            .update(permissions)
+            .eq("id", existing.id));
+        } else {
+          await api(state.db.from("teacher_attendance_permissions")
+            .insert(permissions));
+        }
+        
+        document.getElementById('permission-result').innerHTML = '<div style="color:#166534;padding:8px;background:rgba(22,101,52,0.1);border-radius:6px;">✅ Permissions saved successfully.</div>';
+        setTimeout(() => { document.getElementById('permission-result').innerHTML = ''; }, 3000);
+      } catch (err) {
+        document.getElementById('permission-result').innerHTML = `<div style="color:#ef4444;padding:8px;background:rgba(239,68,68,0.1);border-radius:6px;">❌ Error: ${err.message}</div>`;
+      }
+    };
+    
+    // Reset permissions
+    document.getElementById('reset-permissions').onclick = async function() {
+      const teacherId = document.getElementById('permission-teacher').value;
+      if (!teacherId) {
+        document.getElementById('permission-result').innerHTML = '<div style="color:#ef4444;">Please select a teacher first.</div>';
+        return;
+      }
+      
+      if (!confirm('Reset all permissions for this teacher to default?')) return;
+      
+      try {
+        const existing = await api(state.db.from("teacher_attendance_permissions")
+          .select("id")
+          .eq("teacher_id", teacherId)
+          .maybeSingle());
+        
+        if (existing) {
+          await api(state.db.from("teacher_attendance_permissions")
+            .delete()
+            .eq("id", existing.id));
+        }
+        
+        // Reset form to defaults
+        document.getElementById('permission-can-mark').checked = true;
+        document.getElementById('permission-past-dates').checked = true;
+        document.getElementById('permission-future-dates').checked = false;
+        document.getElementById('permission-holidays').checked = false;
+        
+        document.getElementById('permission-result').innerHTML = '<div style="color:#166534;padding:8px;background:rgba(22,101,52,0.1);border-radius:6px;">✅ Permissions reset to default.</div>';
+        setTimeout(() => { document.getElementById('permission-result').innerHTML = ''; }, 3000);
+      } catch (err) {
+        document.getElementById('permission-result').innerHTML = `<div style="color:#ef4444;padding:8px;background:rgba(239,68,68,0.1);border-radius:6px;">❌ Error: ${err.message}</div>`;
+      }
+    };
+    
+    // --- Clear Attendance Data ---
+    const classOptionsHtml = `<option value="">All Classes</option>` + 
+      state.classes.map(c => `<option value="${c.id}">${esc(c.name)}${c.section ? " — " + esc(c.section) : ""}</option>`).join("");
+    
+    document.getElementById('clear-class').innerHTML = classOptionsHtml;
+    
+    document.getElementById('clear-class').onchange = async () => {
+      const classId = document.getElementById('clear-class').value;
+      if (classId) {
+        const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).order("roll_number"));
+        document.getElementById('clear-student').innerHTML = `<option value="">All Students</option>` + 
+          students.map(s => `<option value="${s.id}">${esc(s.roll_number)} — ${esc(s.name)}</option>`).join("");
+      } else {
+        document.getElementById('clear-student').innerHTML = `<option value="">All Students</option>`;
+      }
+    };
     
     const now = new Date();
     const monthAgo = new Date(now);
@@ -1551,6 +1910,9 @@
     document.getElementById('clear-to').value = isoToday();
     document.getElementById('clear-attendance').onclick = clearAttendanceData;
     applyRoleVisibility();
+    
+    // Restore dropdown selections
+    setTimeout(restoreDropdownSelections, 200);
   }
 
   // --- Clear Attendance Data ---
@@ -1682,6 +2044,13 @@
     }
   }
 
+  // --- Global event listeners for dropdown persistence ---
+  document.addEventListener('change', function(e) {
+    if (e.target.tagName === 'SELECT' && e.target.id) {
+      saveDropdownSelections();
+    }
+  });
+
   // --- Init ---
   function init() {
     const loadingScreen = document.getElementById('loading-screen');
@@ -1784,6 +2153,9 @@
       const goButton = e.target.closest('[data-go]');
       if (goButton) { const page = goButton.dataset.go; if (page) navigate(page); }
     });
+    
+    // Restore dropdown selections
+    setTimeout(restoreDropdownSelections, 500);
     
     if (configured) {
       setTimeout(() => {
