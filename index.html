@@ -7,6 +7,12 @@
   <title>Nous Complex Attendance Portal</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="styles.css">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231a1a2e'/%3E%3Ctext x='50' y='68' font-family='Arial' font-size='44' font-weight='bold' fill='%234f46e5' text-anchor='middle'%3ENC%3C/text%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231a1a2e'/%3E%3Ctext x='50' y='68' font-family='Arial' font-size='44' font-weight='bold' fill='%234f46e5' text-anchor='middle'%3ENC%3C/text%3E%3C/svg%3E">
+  <link rel="shortcut icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231a1a2e'/%3E%3Ctext x='50' y='68' font-family='Arial' font-size='44' font-weight='bold' fill='%234f46e5' text-anchor='middle'%3ENC%3C/text%3E%3C/svg%3E">
+  
   <style>
     * {
       box-sizing: border-box;
@@ -884,6 +890,83 @@
       border-radius: 4px;
     }
 
+    /* Permission Grid Styles */
+    .permission-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin: 10px 0;
+    }
+    .permission-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 14px 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      background: #f9fafb;
+      transition: all 0.2s;
+    }
+    .permission-item.sub {
+      padding: 12px 16px 12px 30px;
+      border: 1px solid #e5e7eb;
+      background: #ffffff;
+    }
+    .permission-item .step-number {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .permission-item .step-number.master {
+      background: #4f46e5;
+    }
+    .permission-item .step-number.sub-step {
+      background: #6b7280;
+    }
+    .permission-item label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      flex: 1;
+      margin: 0;
+      font-weight: 500;
+    }
+    .permission-item label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #4f46e5;
+      flex-shrink: 0;
+    }
+    .permission-item label .label-text {
+      display: block;
+      font-weight: 500;
+      color: #1a1a2e;
+    }
+    .permission-item label .label-sub {
+      display: block;
+      color: #6b7280;
+      font-weight: 400;
+      font-size: 13px;
+    }
+    .permission-item label .label-sub strong {
+      color: #374151;
+    }
+    .permission-item.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .permission-item.disabled label {
+      cursor: not-allowed;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .menu-toggle-btn { display: flex !important; }
@@ -949,6 +1032,9 @@
       .calendar-toolbar { flex-direction: column; align-items: stretch; }
       .calendar-toolbar .action-buttons { margin-left: 0; justify-content: stretch; }
       .calendar-toolbar .action-buttons button { flex: 1; }
+      .permission-item { flex-direction: column; align-items: stretch; gap: 10px; }
+      .permission-item.sub { padding-left: 16px; }
+      .permission-item label { flex-wrap: wrap; }
     }
 
     @media (max-width: 400px) {
@@ -1250,6 +1336,75 @@
   <template id="admin-tools-template">
     <section class="panel">
       <div class="panel-heading"><h2>Admin Tools</h2></div>
+
+      <!-- Teacher Attendance Permissions Panel -->
+      <div id="permissions-panel" class="admin-panel">
+        <h3>Teacher Attendance Permissions</h3>
+        <p class="muted">Control which teachers can mark attendance and their date restrictions.</p>
+        <div style="margin-top:15px;">
+          <label style="display:block;font-weight:600;margin-bottom:8px;color:#374151;">Select Teacher:</label>
+          <select id="permission-teacher" style="width:100%;padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:15px;background:#f9fafb;">
+            <option value="">Select a teacher...</option>
+          </select>
+        </div>
+        <div id="permission-controls" style="display:none;">
+          <div class="permission-grid">
+            <!-- Permission 1: Master Switch -->
+            <div class="permission-item">
+              <div class="step-number master">1</div>
+              <label>
+                <input type="checkbox" id="permission-can-mark" checked>
+                <span>
+                  <span class="label-text">Allow Marking Attendance</span>
+                  <span class="label-sub">Master switch — disables all options below if turned off</span>
+                </span>
+              </label>
+            </div>
+            
+            <!-- Permission 2: Past Dates -->
+            <div class="permission-item sub" data-sub-permission>
+              <div class="step-number sub-step">2</div>
+              <label>
+                <input type="checkbox" id="permission-past-dates" checked>
+                <span>
+                  <span class="label-text">Allow Marking <strong>Past</strong> Dates</span>
+                  <span class="label-sub">Permit attendance entry for dates before today</span>
+                </span>
+              </label>
+            </div>
+            
+            <!-- Permission 3: Future Dates -->
+            <div class="permission-item sub" data-sub-permission>
+              <div class="step-number sub-step">3</div>
+              <label>
+                <input type="checkbox" id="permission-future-dates">
+                <span>
+                  <span class="label-text">Allow Marking <strong>Future</strong> Dates</span>
+                  <span class="label-sub">Permit attendance entry for dates after today</span>
+                </span>
+              </label>
+            </div>
+            
+            <!-- Permission 4: Holidays/Weekends -->
+            <div class="permission-item sub" data-sub-permission>
+              <div class="step-number sub-step">4</div>
+              <label>
+                <input type="checkbox" id="permission-holidays">
+                <span>
+                  <span class="label-text">Allow Marking on <strong>Holidays / Weekends</strong></span>
+                  <span class="label-sub">Permit attendance entry on non-school days</span>
+                </span>
+              </label>
+            </div>
+          </div>
+          
+          <div style="display:flex;gap:12px;margin-top:15px;flex-wrap:wrap;">
+            <button id="save-permissions" class="primary" style="padding:10px 28px;font-weight:600;flex:0 0 auto;">💾 Save Permissions</button>
+            <button id="reset-permissions" class="secondary" style="padding:10px 28px;font-weight:600;flex:0 0 auto;">↺ Reset to Default</button>
+          </div>
+          <div id="permission-result" style="margin-top:10px;font-size:14px;"></div>
+        </div>
+      </div>
 
       <!-- Clear Attendance Data -->
       <div class="admin-panel">
