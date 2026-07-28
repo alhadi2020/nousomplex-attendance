@@ -21,8 +21,8 @@
     recoveryMode: false,
     currentAttendanceDate: null,
     currentAttendanceClass: null,
-    allowPastAttendance: true, // Default setting
-    teacherPermissions: null // Store teacher permissions
+    allowPastAttendance: true,
+    teacherPermissions: null
   };
   const fmt = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const isoToday = () => new Date().toISOString().slice(0, 10);
@@ -129,10 +129,8 @@
       state.profile = profile;
       state.teacher = teacher;
       
-      // Load admin settings
       await loadAdminSettings();
       
-      // Load teacher permissions if teacher
       if (teacher && !isAdmin()) {
         await loadTeacherPermissions();
       }
@@ -147,7 +145,6 @@
       
       applyRoleVisibility();
       
-      // Restore last page from localStorage
       const savedPage = localStorage.getItem('nousomplex_last_page');
       if (savedPage && ['dashboard', 'attendance', 'students', 'classes', 'teachers', 'reports', 'calendar', 'admin-tools'].includes(savedPage)) {
         await navigate(savedPage);
@@ -199,7 +196,6 @@
         state.allowPastAttendance = settings.allow_past_attendance !== false;
       }
     } catch (e) {
-      // Silently fail - use defaults
       console.warn('Could not load admin settings:', e);
     }
   }
@@ -343,7 +339,6 @@
   // --- Navigation ---
   async function navigate(page) {
     state.page = page; 
-    // Save current page to localStorage
     localStorage.setItem('nousomplex_last_page', page);
     
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
@@ -364,7 +359,6 @@
         dashboard, attendance, students, classes, teachers, reports, calendar, "admin-tools": adminTools
       })[page](); 
       setTimeout(applyRoleVisibility, 100);
-      // Restore dropdown selections after navigation
       setTimeout(restoreDropdownSelections, 200);
     } catch (e) { 
       content.innerHTML = empty(e.message); 
@@ -427,7 +421,6 @@
     const admin = isAdmin();
     const isTeacher = !admin && state.teacher;
     
-    // Check teacher permissions
     let canMarkAttendance = admin;
     if (isTeacher && state.teacherPermissions) {
       canMarkAttendance = state.teacherPermissions.can_mark_attendance !== false;
@@ -438,7 +431,6 @@
     $("#load-roster").onclick = loadRoster; 
     $("#save-attendance").onclick = saveAttendance;
     
-    // Show/hide attendance UI based on permissions
     const attendanceUI = document.getElementById('attendance-ui');
     const restrictedMsg = document.getElementById('attendance-restricted-message');
     
@@ -464,7 +456,6 @@
     
     applyRoleVisibility();
     
-    // Auto-load roster if there's a saved class
     if (savedClass && canMarkAttendance) {
       setTimeout(() => loadRoster(), 300);
     }
@@ -474,7 +465,6 @@
     const classId = $("#attendance-class").value;
     const date = $("#attendance-date").value;
     
-    // Save to localStorage for persistence
     localStorage.setItem('nousomplex_attendance_date', date);
     localStorage.setItem('nousomplex_attendance_class', classId);
     state.currentAttendanceDate = date;
@@ -485,7 +475,6 @@
     const admin = isAdmin();
     const isTeacher = !admin && state.teacher;
     
-    // Check teacher permissions
     let canMarkAttendance = admin;
     let allowPastDates = admin;
     let allowFutureDates = admin;
@@ -498,14 +487,12 @@
       allowFutureDates = perm.allow_future_dates === true;
       allowHolidays = perm.allow_holidays === true;
     } else if (isTeacher) {
-      // Default permissions if not loaded
       canMarkAttendance = true;
       allowPastDates = true;
       allowFutureDates = false;
       allowHolidays = false;
     }
     
-    // Check if teacher is allowed to mark attendance at all
     if (isTeacher && !canMarkAttendance) {
       flash("⚠️ You are not authorized to mark attendance.", true);
       $("#roster").innerHTML = empty("You are not authorized to mark attendance. Please contact the administrator.");
@@ -513,7 +500,6 @@
       return;
     }
     
-    // Check date restrictions
     const isPastDate = date < isoToday();
     const isFutureDate = date > isoToday();
     
@@ -532,7 +518,6 @@
       }
     }
     
-    // Check for holidays/weekends
     const isHolidayOrWeekend = await checkIfHolidayOrWeekend(date, classId);
     if (isTeacher && isHolidayOrWeekend && !allowHolidays) {
       flash("⚠️ Attendance cannot be marked on holidays or weekends.", true);
@@ -541,7 +526,6 @@
       return;
     }
     
-    // Check if attendance already exists for this date/class
     const existingSession = await api(state.db.from("attendance_sessions").select("id,created_at").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const isExisting = !!existingSession;
     
@@ -550,11 +534,9 @@
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
     const map = Object.fromEntries(existing.map(r => [r.student_id, r]));
     
-    // Check if they're allowed to mark past attendance (admin override)
     const canMarkPast = isAdmin() || state.allowPastAttendance;
     const canEdit = admin || (!isExisting && (!isPastDate || canMarkPast));
     
-    // Show warning for existing attendance
     if (isExisting && isTeacher) {
       flash("⚠️ Attendance has already been marked for this class on this date. Changes are not allowed.", true);
     } else if (isPastDate && isTeacher && !allowPastDates) {
@@ -581,11 +563,9 @@
       }).join("")}</tbody></table></div>` : 
       empty("No active students exist in this class.");
     
-    // Disable save button if teacher can't edit
     const canSave = admin || (!isExisting && (!isPastDate || canMarkPast) && !isHolidayOrWeekend);
     $("#save-attendance").disabled = !students.length || !canSave;
     
-    // Add edit functionality for admin
     if (admin) {
       $$(".edit-record").forEach(btn => {
         btn.onclick = function() {
@@ -596,14 +576,12 @@
         };
       });
       
-      // Also allow clicking on the status select to change (for admin)
       $$(".status-select").forEach(sel => {
         sel.onchange = function() {
           const tr = this.closest('tr');
           const newStatus = this.value;
           const studentId = tr.dataset.student;
           tr.dataset.status = newStatus;
-          // Highlight changed row
           tr.style.background = '#fef3c7';
           setTimeout(() => { tr.style.background = ''; }, 2000);
         };
@@ -615,7 +593,6 @@
 
   // --- Edit Status Modal ---
   function showStatusEditModal(studentId, currentStatus, date, classId) {
-    // Create modal overlay
     const modal = document.createElement('div');
     modal.className = 'reset-modal show';
     modal.style.display = 'flex';
@@ -646,7 +623,6 @@
         await updateAttendanceStatus(studentId, date, classId, newStatus);
         flash(`Attendance status updated to ${newStatus}.`);
         modal.remove();
-        // Reload roster to reflect changes
         await loadRoster();
       } catch (err) {
         flash(err.message, true);
@@ -657,20 +633,17 @@
       modal.remove();
     };
 
-    // Close on click outside
     modal.onclick = function(e) {
       if (e.target === modal) modal.remove();
     };
   }
 
   async function updateAttendanceStatus(studentId, date, classId, newStatus) {
-    // Find or create the session
     let session = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     if (!session) {
       session = await api(state.db.from("attendance_sessions").insert({ class_id: classId, attendance_date: date }).select("id").single());
     }
     
-    // Update the record
     await api(state.db.from("attendance_records").upsert({
       session_id: session.id,
       student_id: studentId,
@@ -687,7 +660,6 @@
     const admin = isAdmin();
     const isTeacher = !admin && state.teacher;
     
-    // Check if teacher is allowed
     let canMarkAttendance = admin;
     let allowPastDates = admin;
     let allowHolidays = admin;
@@ -703,12 +675,10 @@
       return;
     }
     
-    // Check if attendance already exists
     const existingSession = await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const isPastDate = date < isoToday();
     const canMarkPast = admin || state.allowPastAttendance;
     
-    // Check for holidays/weekends
     const isHolidayOrWeekend = await checkIfHolidayOrWeekend(date, classId);
     if (isTeacher && isHolidayOrWeekend && !allowHolidays) {
       flash("⚠️ Attendance cannot be marked on holidays or weekends.", true);
@@ -739,7 +709,7 @@
       
       await api(state.db.from("attendance_records").upsert(records, { onConflict:"session_id,student_id" })); 
       flash("Attendance saved successfully.");
-      await loadRoster(); // Reload to reflect changes
+      await loadRoster();
     } catch (e) { flash(e.message, true); }
   }
 
@@ -936,18 +906,19 @@
     setTemplate("#reports-template"); 
     await getClasses(); 
     
-    // Set default dates - 1st of current month for from date, today for to date
+    // ALWAYS set to 1st of current month for from date and today for to date
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const fromDate = firstDay.toISOString().slice(0, 10);
+    const toDate = isoToday();
     
-    // Check for saved dates
-    const savedFrom = localStorage.getItem('nousomplex_report_from');
-    const savedTo = localStorage.getItem('nousomplex_report_to');
+    document.getElementById("report-from").value = fromDate;
+    document.getElementById("report-to").value = toDate;
     
-    document.getElementById("report-from").value = savedFrom || firstDay.toISOString().slice(0, 10);
-    document.getElementById("report-to").value = savedTo || isoToday();
+    // Override localStorage with these values
+    localStorage.setItem('nousomplex_report_from', fromDate);
+    localStorage.setItem('nousomplex_report_to', toDate);
     
-    // Save date changes
     document.getElementById("report-from").onchange = function() {
       localStorage.setItem('nousomplex_report_from', this.value);
       saveDropdownSelections();
@@ -983,7 +954,6 @@
     $("#report-view").value = "summary";
     applyReportView();
     
-    // Restore dropdown selections
     setTimeout(restoreDropdownSelections, 200);
   }
 
@@ -1702,7 +1672,7 @@
     setTemplate("#admin-tools-template");
     await getClasses();
 
-    // --- Teacher Attendance Permissions Panel (removed Attendance Settings) ---
+    // --- Teacher Attendance Permissions Panel ---
     const permissionsSection = document.createElement('div');
     permissionsSection.className = 'admin-panel';
     permissionsSection.innerHTML = `
@@ -1741,16 +1711,11 @@
       </div>
     `;
     
-    // Insert the permissions section
     const panel = document.querySelector('.admin-panel');
     if (panel) {
       panel.parentNode.insertBefore(permissionsSection, panel);
-    } else {
-      // If no panel exists, append to the content
-      document.querySelector('#page-content section.panel').appendChild(permissionsSection);
     }
     
-    // Populate teacher dropdown
     const teachers = await api(state.db.from("teachers").select("id,name,profile_id").order("name"));
     const teacherSelect = document.getElementById('permission-teacher');
     teachers.forEach(t => {
@@ -1760,7 +1725,6 @@
       teacherSelect.appendChild(option);
     });
     
-    // Load permissions when teacher is selected
     teacherSelect.onchange = async function() {
       const teacherId = this.value;
       const controls = document.getElementById('permission-controls');
@@ -1770,7 +1734,6 @@
       }
       controls.style.display = 'block';
       
-      // Load existing permissions
       const perm = await api(state.db.from("teacher_attendance_permissions")
         .select("*")
         .eq("teacher_id", teacherId)
@@ -1782,7 +1745,6 @@
         document.getElementById('permission-future-dates').checked = perm.allow_future_dates === true;
         document.getElementById('permission-holidays').checked = perm.allow_holidays === true;
       } else {
-        // Default permissions
         document.getElementById('permission-can-mark').checked = true;
         document.getElementById('permission-past-dates').checked = true;
         document.getElementById('permission-future-dates').checked = false;
@@ -1790,7 +1752,6 @@
       }
     };
     
-    // Save permissions - FIXED RLS ERROR
     document.getElementById('save-permissions').onclick = async function() {
       const teacherId = document.getElementById('permission-teacher').value;
       if (!teacherId) {
@@ -1807,28 +1768,22 @@
       };
       
       try {
-        // First, check if a record exists
         const existing = await api(state.db.from("teacher_attendance_permissions")
           .select("id")
           .eq("teacher_id", teacherId)
           .maybeSingle());
         
         if (existing) {
-          // Update existing
           await api(state.db.from("teacher_attendance_permissions")
             .update(permissions)
             .eq("id", existing.id));
         } else {
-          // Insert new - use direct insert without RLS issues
           const { data, error } = await state.db
             .from("teacher_attendance_permissions")
             .insert(permissions)
             .select();
           
           if (error) {
-            // If RLS is blocking, try using a service role or bypass
-            console.warn('RLS error, trying alternative method...', error);
-            // Try upsert as alternative
             const { error: upsertError } = await state.db
               .from("teacher_attendance_permissions")
               .upsert(permissions, { onConflict: 'teacher_id' });
@@ -1840,7 +1795,6 @@
         document.getElementById('permission-result').innerHTML = '<div style="color:#166534;padding:8px;background:rgba(22,101,52,0.1);border-radius:6px;">✅ Permissions saved successfully.</div>';
         setTimeout(() => { document.getElementById('permission-result').innerHTML = ''; }, 3000);
         
-        // Reload teacher permissions for the current user if it's the same teacher
         if (state.teacher && state.teacher.id === teacherId) {
           await loadTeacherPermissions();
         }
@@ -1850,7 +1804,6 @@
       }
     };
     
-    // Reset permissions
     document.getElementById('reset-permissions').onclick = async function() {
       const teacherId = document.getElementById('permission-teacher').value;
       if (!teacherId) {
@@ -1872,7 +1825,6 @@
             .eq("id", existing.id));
         }
         
-        // Reset form to defaults
         document.getElementById('permission-can-mark').checked = true;
         document.getElementById('permission-past-dates').checked = true;
         document.getElementById('permission-future-dates').checked = false;
@@ -1910,7 +1862,6 @@
     document.getElementById('clear-attendance').onclick = clearAttendanceData;
     applyRoleVisibility();
     
-    // Restore dropdown selections
     setTimeout(restoreDropdownSelections, 200);
   }
 
@@ -2067,7 +2018,6 @@
     $("#signout").onclick = async () => { 
       await state.db.auth.signOut(); 
       cachedClasses = null; 
-      // Clear stored page when signing out
       localStorage.removeItem('nousomplex_last_page');
       localStorage.removeItem('nousomplex_attendance_date');
       localStorage.removeItem('nousomplex_attendance_class');
@@ -2099,7 +2049,6 @@
 
     handlePasswordReset();
     
-    // Mobile Sidebar Toggle
     const menuToggle = document.getElementById('menu-toggle-btn');
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -2143,7 +2092,6 @@
       if (navButton && window.innerWidth <= 768) setTimeout(closeSidebar, 300);
     });
 
-    // Navigation
     document.addEventListener('click', function(e) {
       const button = e.target.closest('#nav button[data-page]');
       if (button) { e.preventDefault(); const page = button.dataset.page; if (page) navigate(page); }
@@ -2153,7 +2101,6 @@
       if (goButton) { const page = goButton.dataset.go; if (page) navigate(page); }
     });
     
-    // Restore dropdown selections
     setTimeout(restoreDropdownSelections, 500);
     
     if (configured) {
@@ -2166,6 +2113,5 @@
     }
   }
   
-  // Start the application
   init();
 })();
