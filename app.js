@@ -529,6 +529,20 @@
     const existingSession = await api(state.db.from("attendance_sessions").select("id,created_at").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const isExisting = !!existingSession;
     
+    // A teacher who is not allowed to make changes to an already-marked
+    // session should not see the marked attendance at all — do not fetch
+    // or render it, just show a locked message and stop here.
+    if (isExisting && isTeacher) {
+      flash("⚠️ Attendance has already been marked for this class on this date. Changes are not allowed.", true);
+      $("#roster").innerHTML = `
+        <div class="panel" style="background:#fef2f2;border:1px solid #fecaca;padding:20px;border-radius:8px;text-align:center;">
+          <p style="color:#991b1b;font-weight:600;margin:0;">🔒 Attendance for this class and date has already been marked.</p>
+          <p style="color:#991b1b;margin:8px 0 0;font-size:14px;">You are not permitted to view or change it. Contact the administrator if a correction is needed.</p>
+        </div>`;
+      $("#save-attendance").disabled = true;
+      return;
+    }
+    
     const students = await api(state.db.from("students").select("id,name,roll_number").eq("class_id", classId).eq("active", true).order("roll_number"));
     const session = existingSession || await api(state.db.from("attendance_sessions").select("id").eq("class_id", classId).eq("attendance_date", date).maybeSingle());
     const existing = session ? await api(state.db.from("attendance_records").select("student_id,status,remarks").eq("session_id", session.id)) : [];
@@ -537,9 +551,7 @@
     const canMarkPast = isAdmin() || state.allowPastAttendance;
     const canEdit = admin || (!isExisting && (!isPastDate || canMarkPast));
     
-    if (isExisting && isTeacher) {
-      flash("⚠️ Attendance has already been marked for this class on this date. Changes are not allowed.", true);
-    } else if (isPastDate && isTeacher && !allowPastDates) {
+    if (isPastDate && isTeacher && !allowPastDates) {
       flash("⚠️ Marking attendance for past dates is restricted by admin.", true);
     }
     
@@ -899,6 +911,13 @@
             select.value = selections[id];
           }
         });
+        // Re-apply the report view (summary / detail / both) after restoring
+        // the saved dropdown value — otherwise the visible sections keep
+        // showing whatever was rendered before the restore ran and no
+        // longer match the "Show" dropdown.
+        if (document.getElementById('report-view')) {
+          applyReportView();
+        }
       } catch (e) {
         console.warn('Could not restore dropdown selections:', e);
       }
@@ -1694,24 +1713,36 @@
           </select>
         </div>
         <div id="permission-controls" style="display:none;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:10px 0;">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="checkbox" id="permission-can-mark" checked>
-              <span>Allow marking attendance</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="checkbox" id="permission-past-dates" checked>
-              <span>Allow marking past dates</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="checkbox" id="permission-future-dates">
-              <span>Allow marking future dates</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-              <input type="checkbox" id="permission-holidays">
-              <span>Allow marking holidays/weekends</span>
-            </label>
-          </div>
+          <ol class="permission-sequence" style="list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:10px;">
+            <li style="display:flex;align-items:flex-start;gap:10px;padding:10px;border:1px solid #e5e7eb;border-radius:8px;background:#f9fafb;">
+              <span style="font-weight:700;color:#4f46e5;min-width:18px;">1</span>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+                <input type="checkbox" id="permission-can-mark" checked>
+                <span><strong>Allow marking attendance</strong><br><small class="muted">Master switch — turning this off disables all options below and blocks the teacher entirely.</small></span>
+              </label>
+            </li>
+            <li data-sub-permission style="display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px 30px;border:1px solid #e5e7eb;border-radius:8px;">
+              <span style="font-weight:700;color:#6b7280;min-width:18px;">2</span>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+                <input type="checkbox" id="permission-past-dates" checked>
+                <span>Allow marking <strong>past</strong> dates</span>
+              </label>
+            </li>
+            <li data-sub-permission style="display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px 30px;border:1px solid #e5e7eb;border-radius:8px;">
+              <span style="font-weight:700;color:#6b7280;min-width:18px;">3</span>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+                <input type="checkbox" id="permission-future-dates">
+                <span>Allow marking <strong>future</strong> dates</span>
+              </label>
+            </li>
+            <li data-sub-permission style="display:flex;align-items:flex-start;gap:10px;padding:10px 10px 10px 30px;border:1px solid #e5e7eb;border-radius:8px;">
+              <span style="font-weight:700;color:#6b7280;min-width:18px;">4</span>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+                <input type="checkbox" id="permission-holidays">
+                <span>Allow marking on <strong>holidays / weekends</strong></span>
+              </label>
+            </li>
+          </ol>
           <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
             <button id="save-permissions" class="primary" style="padding:8px 20px;">Save Permissions</button>
             <button id="reset-permissions" class="secondary" style="padding:8px 20px;">Reset to Default</button>
@@ -1741,6 +1772,18 @@
       teacherSelect.appendChild(option);
     });
     
+    // Keep the sequence visually and functionally consistent: options 2-4
+    // only make sense once "Allow marking attendance" (option 1) is on.
+    function applyPermissionSequenceState() {
+      const masterOn = document.getElementById('permission-can-mark').checked;
+      $$('[data-sub-permission]').forEach(row => {
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        checkbox.disabled = !masterOn;
+        row.style.opacity = masterOn ? '1' : '0.5';
+      });
+    }
+    document.getElementById('permission-can-mark').onchange = applyPermissionSequenceState;
+
     // Load permissions when teacher is selected
     teacherSelect.onchange = async function() {
       const teacherId = this.value;
@@ -1767,6 +1810,7 @@
         document.getElementById('permission-future-dates').checked = false;
         document.getElementById('permission-holidays').checked = false;
       }
+      applyPermissionSequenceState();
     };
     
     document.getElementById('save-permissions').onclick = async function() {
@@ -1846,6 +1890,7 @@
         document.getElementById('permission-past-dates').checked = true;
         document.getElementById('permission-future-dates').checked = false;
         document.getElementById('permission-holidays').checked = false;
+        applyPermissionSequenceState();
         
         document.getElementById('permission-result').innerHTML = '<div style="color:#166534;padding:8px;background:rgba(22,101,52,0.1);border-radius:6px;">✅ Permissions reset to default.</div>';
         setTimeout(() => { document.getElementById('permission-result').innerHTML = ''; }, 3000);
