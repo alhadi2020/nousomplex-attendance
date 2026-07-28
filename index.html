@@ -1109,15 +1109,18 @@
 
   <template id="attendance-template">
     <section class="panel">
-      <div class="form-grid">
-        <label>Date <input id="attendance-date" type="date"></label>
-        <label>Class <select id="attendance-class"><option value="">Select A Class</option></select></label>
+      <div id="attendance-restricted-message" style="display:none;"></div>
+      <div id="attendance-ui">
+        <div class="form-grid">
+          <label>Date <input id="attendance-date" type="date"></label>
+          <label>Class <select id="attendance-class"><option value="">Select A Class</option></select></label>
+        </div>
+        <div class="toolbar">
+          <button id="load-roster" class="secondary">Load Students</button>
+          <button id="save-attendance" class="primary" disabled>Save Attendance</button>
+        </div>
+        <div id="roster"></div>
       </div>
-      <div class="toolbar">
-        <button id="load-roster" class="secondary">Load Students</button>
-        <button id="save-attendance" class="primary" disabled>Save Attendance</button>
-      </div>
-      <div id="roster"></div>
     </section>
   </template>
 
