@@ -892,6 +892,7 @@
     try { 
       await api(state.db.from("classes").insert({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null })); 
       flash("Class created."); 
+      cachedClasses = null; // force getClasses() to re-fetch instead of returning the stale cached list
       classes(); 
     } catch (err) { flash(err.message, true); } 
   }
@@ -902,13 +903,14 @@
     try { 
       await api(state.db.from("classes").update({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null }).eq("id", id)); 
       flash("Class updated."); 
+      cachedClasses = null; // force getClasses() to re-fetch instead of returning the stale cached list
       classes(); 
     } catch (err) { flash(err.message, true); } 
   }
 
   async function deleteClass(id) {
     if (!confirm("Delete this class? This cannot be undone.")) return;
-    try { await api(state.db.from("classes").delete().eq("id", id)); flash("Class deleted."); classes(); }
+    try { await api(state.db.from("classes").delete().eq("id", id)); flash("Class deleted."); cachedClasses = null; classes(); }
     catch (err) { flash(/foreign key|violat/i.test(err.message) ? "This class still has students assigned and cannot be deleted." : err.message, true); }
   }
 
@@ -943,11 +945,11 @@
     applyRoleVisibility();
   }
 
-  async function updateTeacher(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("teachers").update({ name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" }).eq("id", id)); flash("Teacher updated."); teachers(); } catch (err) { flash(err.message, true); } }
+  async function updateTeacher(e, id) { e.preventDefault(); const f = new FormData(e.target); try { await api(state.db.from("teachers").update({ name:f.get("name"), phone:f.get("phone") || null, can_export:f.get("can_export") === "true" }).eq("id", id)); flash("Teacher updated."); cachedClasses = null; teachers(); } catch (err) { flash(err.message, true); } }
 
   async function deleteTeacher(id) {
     if (!confirm("Remove this teacher profile? Their sign-in account stays intact and can be reactivated later, but they'll be unassigned from any classes.")) return;
-    try { await api(state.db.from("teachers").delete().eq("id", id)); flash("Teacher profile removed."); teachers(); }
+    try { await api(state.db.from("teachers").delete().eq("id", id)); flash("Teacher profile removed."); cachedClasses = null; teachers(); }
     catch (err) { flash(err.message, true); }
   }
 
