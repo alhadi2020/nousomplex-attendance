@@ -808,6 +808,12 @@
     $("#students-class-filter").onchange = renderTable;
     if (admin) $("#new-student").onclick = () => showStudentForm();
     applyRoleVisibility();
+    // students() gets called directly after create/update/delete/toggle
+    // (not just via nav), and it always rebuilds the filter dropdown
+    // defaulting to "All classes" — which reset the view back to the
+    // unfiltered list even though you never left this page. Re-apply the
+    // saved filter so the previously selected class stays selected.
+    setTimeout(restoreDropdownSelections, 50);
   }
 
   async function toggleStudentActive(id, currentActive) {
@@ -867,6 +873,7 @@
       $$(".delete-class").forEach(btn => btn.onclick = () => deleteClass(btn.closest("tr").dataset.id));
     }
     applyRoleVisibility();
+    setTimeout(restoreDropdownSelections, 50);
   }
 
   async function showClassForm(cls = null) {
@@ -920,6 +927,7 @@
     $$(".edit-teacher").forEach(btn => btn.onclick = () => showTeacherEditForm(registered.find(t => t.id === btn.closest("tr").dataset.id)));
     $$(".delete-teacher").forEach(btn => btn.onclick = () => deleteTeacher(btn.closest("tr").dataset.id));
     applyRoleVisibility();
+    setTimeout(restoreDropdownSelections, 50);
   }
 
   function showTeacherActivateForm(available) {
