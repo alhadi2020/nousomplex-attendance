@@ -954,39 +954,54 @@
     localStorage.setItem('nousomplex_dropdown_selections', JSON.stringify(selections));
   }
 
-  function restoreDropdownSelections() {
+  async function restoreDropdownSelections() {
     const saved = localStorage.getItem('nousomplex_dropdown_selections');
-    if (saved) {
-      try {
-        const selections = JSON.parse(saved);
-        Object.keys(selections).forEach(id => {
-          const select = document.getElementById(id);
-          if (select) {
-            // Don't restore date inputs - they should be fixed
-            if (select.id === 'report-from' || select.id === 'report-to') {
-              return;
-            }
-            // Check if the value exists in the select options
-            const optionExists = Array.from(select.options).some(opt => opt.value === selections[id]);
-            if (optionExists) {
-              select.value = selections[id];
-            }
+    if (!saved) return;
+    try {
+      const selections = JSON.parse(saved);
+      // Sequential (not Promise.all) and in the order the selects were saved,
+      // which mirrors DOM order — this matters for cascading dropdowns like
+      // class -> student, where the parent's onchange must finish populating
+      // the child's options BEFORE we try to restore the child's saved value.
+      for (const id of Object.keys(selections)) {
+        const select = document.getElementById(id);
+        if (!select) continue;
+        // Don't restore date inputs - they should be fixed
+        if (select.id === 'report-from' || select.id === 'report-to') continue;
+        // Check if the value exists in the select options
+        const optionExists = Array.from(select.options).some(opt => opt.value === selections[id]);
+        if (!optionExists) continue;
+        if (select.value === selections[id]) continue; // already correct, nothing to reload
+        select.value = selections[id];
+        // Restoring the value alone only fixes the label — it doesn't run the
+        // page's onchange logic (filtering tables, loading dependent
+        // dropdown options, re-running reports, loading permissions, etc.),
+        // so the dropdown looked right after refresh but the data on screen
+        // stayed stale/mismatched. Fire the change here, and await it if the
+        // handler is async, so everything downstream reloads for real.
+        if (typeof select.onchange === 'function') {
+          try {
+            await select.onchange.call(select, new Event('change', { bubbles: true }));
+          } catch (err) {
+            console.warn(`Error running onchange for #${id} during restore:`, err);
           }
-        });
-        // Re-apply the report view (summary / detail / both) after restoring
-        // the saved dropdown value — otherwise the visible sections keep
-        // showing whatever was rendered before the restore ran and no
-        // longer match the "Show" dropdown.
-        if (document.getElementById('report-view')) {
-          applyReportView();
-          // Also re-run the report if we have data to show the correct details
-          if (state.reportStudentResults && state.reportStudentResults.length > 0) {
-            setTimeout(runReport, 100);
-          }
+        } else {
+          select.dispatchEvent(new Event('change', { bubbles: true }));
         }
-      } catch (e) {
-        console.warn('Could not restore dropdown selections:', e);
       }
+      // Re-apply the report view (summary / detail / both) after restoring
+      // the saved dropdown value — otherwise the visible sections keep
+      // showing whatever was rendered before the restore ran and no
+      // longer match the "Show" dropdown.
+      if (document.getElementById('report-view')) {
+        applyReportView();
+        // Also re-run the report if we have data to show the correct details
+        if (state.reportStudentResults && state.reportStudentResults.length > 0) {
+          setTimeout(runReport, 100);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not restore dropdown selections:', e);
     }
   }
 
