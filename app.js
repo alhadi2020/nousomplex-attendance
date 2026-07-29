@@ -1224,7 +1224,12 @@
     const totalPresent = studentResults.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = studentResults.reduce((sum, s) => sum + s.absentCount, 0);
     const totalLeave = studentResults.reduce((sum, s) => sum + s.leaveCount, 0);
-    const overallAttendance = totalDesignatedDaysCount > 0 ? Math.round((totalPresent / totalDesignatedDaysCount) * 100) : 0;
+    // Sum designated days ACROSS ALL STUDENTS (not just the per-date-range count),
+    // since each student contributes their own designated-days total. Previously this
+    // divided totalPresent (summed across all students) by a single student's designated
+    // days count, inflating the percentage far past 100% for multi-student reports.
+    const totalDesignatedDaysAllStudents = studentResults.reduce((sum, s) => sum + s.designatedDays, 0);
+    const overallAttendance = totalDesignatedDaysAllStudents > 0 ? Math.round((totalPresent / totalDesignatedDaysAllStudents) * 100) : 0;
     
     document.getElementById('report-summary').innerHTML = `
       <article><span>Total Students</span><strong>${totalStudents}</strong></article>
