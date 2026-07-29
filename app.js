@@ -945,7 +945,19 @@
 
   // --- Dropdown Selections Persistence ---
   function saveDropdownSelections() {
-    const selections = {};
+    // Merge with whatever was already saved instead of replacing it outright.
+    // Only the selects that exist in the DOM right now (i.e. on the current
+    // page) get updated — every other page's remembered selection is left
+    // untouched. Previously this rebuilt the object from scratch each time,
+    // so switching pages (or even just selecting something on one page)
+    // silently erased the saved selections for every other page.
+    let existing = {};
+    try {
+      existing = JSON.parse(localStorage.getItem('nousomplex_dropdown_selections') || '{}');
+    } catch (e) {
+      existing = {};
+    }
+    const selections = { ...existing };
     document.querySelectorAll('select').forEach(select => {
       if (select.id) {
         selections[select.id] = select.value;
