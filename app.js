@@ -893,7 +893,7 @@
       await api(state.db.from("classes").insert({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null })); 
       flash("Class created."); 
       cachedClasses = null; // force getClasses() to re-fetch instead of returning the stale cached list
-      classes(); 
+      await classes(); 
     } catch (err) { flash(err.message, true); } 
   }
 
@@ -904,13 +904,13 @@
       await api(state.db.from("classes").update({ name:f.get("name"), section:f.get("section"), academic_year:f.get("year"), teacher_id:f.get("teacher") || null }).eq("id", id)); 
       flash("Class updated."); 
       cachedClasses = null; // force getClasses() to re-fetch instead of returning the stale cached list
-      classes(); 
+      await classes(); 
     } catch (err) { flash(err.message, true); } 
   }
 
   async function deleteClass(id) {
     if (!confirm("Delete this class? This cannot be undone.")) return;
-    try { await api(state.db.from("classes").delete().eq("id", id)); flash("Class deleted."); cachedClasses = null; classes(); }
+    try { await api(state.db.from("classes").delete().eq("id", id)); flash("Class deleted."); cachedClasses = null; await classes(); }
     catch (err) { flash(/foreign key|violat/i.test(err.message) ? "This class still has students assigned and cannot be deleted." : err.message, true); }
   }
 
