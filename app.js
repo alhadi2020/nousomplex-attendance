@@ -73,8 +73,11 @@
   let cachedClasses = null;
   let sessionLoading = false;
   
-  async function getClasses() {
-    if (cachedClasses) { state.classes = cachedClasses; return cachedClasses; }
+  async function getClasses(forceRefresh = false) {
+    if (cachedClasses && !forceRefresh) { 
+      state.classes = cachedClasses; 
+      return cachedClasses; 
+    }
     state.classes = await api(state.db.from("classes").select("id,name,section,academic_year,teacher_id,teachers(name)").order("name"));
     cachedClasses = state.classes;
     return state.classes;
@@ -140,6 +143,9 @@
       if (teacher && !isAdmin()) {
         await loadTeacherPermissions();
       }
+      
+      // Pre-load classes for dashboard
+      await getClasses();
       
       const displayName = state.profile.full_name || state.profile.email;
       $("#user-name").textContent = displayName;
@@ -375,6 +381,10 @@
   // --- Dashboard ---
   async function dashboard() {
     setTemplate("#dashboard-template"); 
+    
+    // Ensure classes are loaded before displaying stats
+    await getClasses();
+    
     const day = isoToday();
     const [students, sessions] = await Promise.all([
       api(state.db.from("students").select("id")),
@@ -1452,11 +1462,12 @@
     const studentId = document.getElementById('report-student')?.value;
     const studentName = studentId ? results.find(s => s.id === studentId)?.name || '' : 'All Students';
     
-    const totalDesignatedDays = state.reportTotalDesignatedDays || results.reduce((sum, s) => sum + s.designatedDays, 0);
+    // Calculate totals correctly - sum across all students
+    const totalDesignatedDaysAllStudents = results.reduce((sum, s) => sum + s.designatedDays, 0);
     const totalPresent = results.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = results.reduce((sum, s) => sum + s.absentCount, 0);
     const totalLeave = results.reduce((sum, s) => sum + s.leaveCount, 0);
-    const overallAttendance = totalDesignatedDays > 0 ? Math.round((totalPresent / totalDesignatedDays) * 100) : 0;
+    const overallAttendance = totalDesignatedDaysAllStudents > 0 ? Math.round((totalPresent / totalDesignatedDaysAllStudents) * 100) : 0;
     
     let detailRows = state.reportRows;
     if (studentId) {
@@ -1519,7 +1530,7 @@
           <div class="stat-box highlight"><span class="number">${results.length}</span><span class="label">Total Students</span></div>
           <div class="stat-box"><span class="number">${state.reportTotalDays || results[0]?.totalDays || 0}</span><span class="label">Total Days</span></div>
           <div class="stat-box"><span class="number">${state.reportTotalHolidays || 0}</span><span class="label">Holidays</span></div>
-          <div class="stat-box highlight"><span class="number">${state.reportTotalDesignatedDays || totalDesignatedDays}</span><span class="label">Designated Days</span></div>
+          <div class="stat-box highlight"><span class="number">${totalDesignatedDaysAllStudents}</span><span class="label">Designated Days</span></div>
           <div class="stat-box green"><span class="number">${totalPresent}</span><span class="label">Present</span></div>
           <div class="stat-box red"><span class="number">${totalAbsent}</span><span class="label">Absent</span></div>
           <div class="stat-box yellow"><span class="number">${totalLeave}</span><span class="label">Leave</span></div>
