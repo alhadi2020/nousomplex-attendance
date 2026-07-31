@@ -1462,12 +1462,16 @@
     const studentId = document.getElementById('report-student')?.value;
     const studentName = studentId ? results.find(s => s.id === studentId)?.name || '' : 'All Students';
     
-    // Calculate totals correctly - sum across all students
+    // Calculate totals - sum across all students
     const totalDesignatedDaysAllStudents = results.reduce((sum, s) => sum + s.designatedDays, 0);
     const totalPresent = results.reduce((sum, s) => sum + s.presentCount, 0);
     const totalAbsent = results.reduce((sum, s) => sum + s.absentCount, 0);
     const totalLeave = results.reduce((sum, s) => sum + s.leaveCount, 0);
+    // Use the per-student designated days count for overall attendance calculation
     const overallAttendance = totalDesignatedDaysAllStudents > 0 ? Math.round((totalPresent / totalDesignatedDaysAllStudents) * 100) : 0;
+    
+    // Use state.reportTotalDesignatedDays for the summary display (matches the report page)
+    const displayDesignatedDays = state.reportTotalDesignatedDays || 0;
     
     let detailRows = state.reportRows;
     if (studentId) {
@@ -1530,7 +1534,7 @@
           <div class="stat-box highlight"><span class="number">${results.length}</span><span class="label">Total Students</span></div>
           <div class="stat-box"><span class="number">${state.reportTotalDays || results[0]?.totalDays || 0}</span><span class="label">Total Days</span></div>
           <div class="stat-box"><span class="number">${state.reportTotalHolidays || 0}</span><span class="label">Holidays</span></div>
-          <div class="stat-box highlight"><span class="number">${totalDesignatedDaysAllStudents}</span><span class="label">Designated Days</span></div>
+          <div class="stat-box highlight"><span class="number">${displayDesignatedDays}</span><span class="label">Designated Days</span></div>
           <div class="stat-box green"><span class="number">${totalPresent}</span><span class="label">Present</span></div>
           <div class="stat-box red"><span class="number">${totalAbsent}</span><span class="label">Absent</span></div>
           <div class="stat-box yellow"><span class="number">${totalLeave}</span><span class="label">Leave</span></div>
